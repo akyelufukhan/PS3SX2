@@ -1,0 +1,23 @@
+# Build output
+build/
+*.elf
+*.self
+*.pkg
+*.map
+tests/run_tests
+tests/run_tests.dSYM/
+
+# Toolchain checkouts used by CI
+ps3dev/
+tiny3d-src/
+
+# Never commit games, firmware or Sony files
+*.iso
+*.ISO
+*.BIN.ENC
+*.bin.enc
+*.CONFIG
+*.PUP
+PS2ISO/
+
+.DS_Store

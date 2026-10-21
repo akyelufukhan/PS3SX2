@@ -1,0 +1,49 @@
+name: Build
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  tests:
+    name: Host unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run tests
+        run: make test
+
+  pkg:
+    name: PS3 package
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set env vars
+        run: |
+          echo "sha_name=$(echo ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y python2.7
+
+      # Prebuilt PSL1GHT + ps3libraries, the same toolchain Apollo Save Tool builds with.
+      - name: Download PSL1GHT toolchain
+        run: |
+          curl -sL https://github.com/bucanero/ps3toolchain/releases/download/ubuntu-latest-fad3b5fb/ps3dev-ubuntu-latest-2020-08-31.tar.gz | tar xz -C ./
+          curl -sL https://github.com/ps3dev/PSL1GHT/raw/master/ppu/include/sysutil/sysutil.h -o ps3dev/ppu/include/sysutil/sysutil.h
+          echo "PS3DEV=${GITHUB_WORKSPACE}/ps3dev" >> $GITHUB_ENV
+          echo "PSL1GHT=${GITHUB_WORKSPACE}/ps3dev" >> $GITHUB_ENV
+
+      - name: Install Tiny3D and libfont
+        run: |
+          git clone --depth 1 https://github.com/wargio/tiny3D.git tiny3d-src
+          make -C tiny3d-src/lib install
+          make -C tiny3d-src/libfont install
+
+      - name: Build package
+        run: make pkg
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps3sx2-${{ env.sha_name }}
+          path: ps3sx2.pkg
+          if-no-files-found: error
