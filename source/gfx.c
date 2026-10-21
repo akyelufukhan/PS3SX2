@@ -671,7 +671,7 @@ static void draw_cover(const game_t *g, const cover_slot *slot, const cf_pose *p
 
 static void draw_carousel(const library_t *lib, float pos)
 {
-    MATRIX proj = MatrixProjPerspective(90, (Video_aspect == 1) ? 9.0f / 16.0f : 1.0f, 0.00125f, 300.0f);
+    MATRIX proj = MatrixProjPerspective(CF_FOV, (Video_aspect == 1) ? 9.0f / 16.0f : 1.0f, 0.00125f, 300.0f);
     int order[2 * (int)CF_VISIBLE + 2];
     int i, n = 0;
     int first = (int)floorf(pos - CF_VISIBLE), last = (int)ceilf(pos + CF_VISIBLE);

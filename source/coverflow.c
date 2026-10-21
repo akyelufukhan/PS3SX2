@@ -2,11 +2,12 @@
 
 #include <math.h>
 
-#define CF_CENTER_Z 3.5f   /* depth of the selected cover */
-#define CF_SIDE_Z   4.2f   /* depth of every other cover */
-#define CF_SIDE_X   1.9f   /* gap between the selected cover and its neighbours */
-#define CF_STACK_X  0.55f  /* gap between consecutive side covers */
-#define CF_ANGLE    1.05f  /* side cover rotation, about 60 degrees */
+/* Tuned in RPCS3 against the design mockup, for a CF_FOV camera. */
+#define CF_CENTER_Z 8.45f  /* depth of the selected cover */
+#define CF_SIDE_Z   9.55f  /* depth of every other cover, ~13% smaller on screen */
+#define CF_SIDE_X   1.6f   /* gap between the selected cover and its neighbours */
+#define CF_STACK_X  0.72f  /* gap between consecutive side covers */
+#define CF_ANGLE    1.01f  /* side cover rotation, about 58 degrees */
 #define CF_DIM      0.45f  /* how much darker side covers get */
 #define CF_SPEED    0.22f  /* fraction of the remaining distance covered per frame */
 

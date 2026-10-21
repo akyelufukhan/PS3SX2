@@ -6,6 +6,7 @@
  * unit tested. Units are Tiny3D world units: x to the right, y up, z into the screen.
  */
 
+#define CF_FOV      45.0f  /* camera field of view in degrees; narrow keeps side covers slim */
 #define CF_COVER_W  1.5f   /* PS2 case is roughly 135 x 190 mm */
 #define CF_COVER_H  2.1f
 #define CF_VISIBLE  6.0f   /* covers further than this from the center aren't drawn */
