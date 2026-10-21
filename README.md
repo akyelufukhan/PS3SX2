@@ -4,6 +4,10 @@
 
 A cover-flow launcher for PS2 games on the **PS3 Slim and Super Slim**.
 
+![PS3SX2 running in RPCS3 with the Turkish UI](docs/screenshot.png)
+
+<sub>Running in RPCS3 with a test library. Games without artwork get a generated cover.</sub>
+
 Those models dropped the PS2 chips, so they can't play PS2 discs. The firmware still
 carries Sony's PS2 software emulator, `ps2_netemu`, which runs the PS2 Classics sold on
 the PlayStation Store. PS3SX2 lists the games in your `PS2ISO` folder as a shelf of
@@ -12,8 +16,9 @@ covers. Pick one and it hands the game to that emulator.
 The name reads "PS3 Slim × PS2": S for Slim, X for the ✕ button that starts a game,
 2 for PS2.
 
-> **Status: early development.** The UI and the PS2 Classics route are written but
-> haven't been run on a console yet. Expect rough edges and please report what you find.
+> **Status: early development.** The UI runs in the RPCS3 emulator, but nothing has been
+> tried on a real console yet, including actually starting a game. Expect rough edges and
+> please report what you find.
 
 ## Features
 
@@ -62,7 +67,8 @@ PS3SX2 looks for a cover in this order:
 1. `PS2ISO/covers/<SERIAL>.png` or `.jpg`, for example `covers/SLUS-21050.jpg`
 2. An image with the same name as the game, next to it: `Burnout 3 [SLUS-21050].png`
 
-A game without a cover gets a plain colored case. Images are shrunk to 256×360 on load.
+A game without a cover gets a generated one: a colored case with its title, region and
+serial. Images are shrunk to 256×360 on load.
 
 ### File names
 
@@ -120,6 +126,7 @@ That produces `ps3sx2.pkg`. Every push to GitHub also builds it: open the
 | `source/serial.c` | Finds serials in `SYSTEM.CNF` and file names, region lookup |
 | `source/launcher.c` | PS2 Classics copy, Cobra ISO stub |
 | `source/coverflow.c` | Carousel layout and animation math |
+| `source/canvas.c` | Small software painter for generated covers |
 | `source/covers.c` | Where to look for each game's cover |
 | `source/lang.c`, `source/text.c` | English and Turkish strings, UTF-8 to font encoding |
 | `tests/` | Host unit tests for everything above except `main.c` and `gfx.c` |
@@ -129,7 +136,8 @@ so it can be tested with `make test`.
 
 ## Roadmap
 
-- [ ] Run on real hardware and RPCS3, tune the carousel
+- [x] Run in RPCS3 and tune the carousel against the design
+- [ ] Run on a real console and start a game end to end
 - [ ] Start plain `.iso` games on CFW through Cobra
 - [ ] Start the placeholder directly instead of going back to the XMB
 - [ ] Split `.iso.0` / `.iso.1` images on FAT32 USB drives

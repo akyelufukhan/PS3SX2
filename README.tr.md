@@ -4,6 +4,10 @@
 
 **PS3 Slim ve Super Slim** için kapak akışlı (cover flow) bir PS2 oyun başlatıcısı.
 
+![PS3SX2, RPCS3'te Türkçe arayüzle çalışırken](docs/screenshot.png)
+
+<sub>RPCS3'te test kütüphanesiyle çalışırken. Kapak resmi olmayan oyunlara kapak üretiliyor.</sub>
+
 Bu modellerde PS2 çipleri olmadığı için PS2 diskleri çalışmaz. Ama sistem yazılımında
 Sony'nin PS2 yazılım emülatörü `ps2_netemu` hâlâ duruyor; PlayStation Store'daki PS2
 Classics oyunları onunla çalışıyor. PS3SX2, `PS2ISO` klasöründeki oyunları bir kapak
@@ -12,9 +16,9 @@ rafı olarak listeler. Birini seçtiğinde oyunu bu emülatöre teslim eder.
 İsim "PS3 Slim × PS2" diye okunur: S Slim'den, X oyunu başlatan ✕ tuşundan, 2 de
 PS2'den geliyor.
 
-> **Durum: erken geliştirme aşamasında.** Arayüz ve PS2 Classics ile başlatma yolu
-> yazıldı ama henüz bir konsolda çalıştırılmadı. Pürüzler olabilir, bulduklarını
-> bildirirsen sevinirim.
+> **Durum: erken geliştirme aşamasında.** Arayüz RPCS3 emülatöründe çalışıyor, ama gerçek
+> bir konsolda henüz hiçbir şey denenmedi; bir oyunu sonuna kadar başlatmak da buna dahil.
+> Pürüzler olabilir, bulduklarını bildirirsen sevinirim.
 
 ## Özellikler
 
@@ -64,8 +68,8 @@ PS3SX2 kapağı şu sırayla arar:
 1. `PS2ISO/covers/<SERİ KOD>.png` veya `.jpg`, örneğin `covers/SLUS-21050.jpg`
 2. Oyunun yanında, oyunla aynı adı taşıyan resim: `Burnout 3 [SLUS-21050].png`
 
-Kapağı olmayan oyun düz renkli bir kutuyla gösterilir. Resimler yüklenirken
-256×360'a küçültülür.
+Kapağı olmayan oyuna, adı, bölgesi ve seri koduyla renkli bir kapak üretilir. Resimler
+yüklenirken 256×360'a küçültülür.
 
 ### Dosya adları
 
@@ -123,6 +127,7 @@ sekmesinden bir çalıştırmayı açıp `ps3sx2-…` çıktısını indirebilir
 | `source/serial.c` | `SYSTEM.CNF` ve dosya adında seri kod bulma, bölge tespiti |
 | `source/launcher.c` | PS2 Classics kopyalama, Cobra ISO taslağı |
 | `source/coverflow.c` | Kapak rafı yerleşimi ve animasyon hesapları |
+| `source/canvas.c` | Üretilen kapaklar için küçük yazılımsal çizim modülü |
 | `source/covers.c` | Her oyunun kapağının aranacağı yerler |
 | `source/lang.c`, `source/text.c` | Türkçe ve İngilizce metinler, UTF-8'den font kodlamasına çeviri |
 | `tests/` | `main.c` ve `gfx.c` dışındaki her şey için birim testleri |
@@ -132,7 +137,8 @@ ki `make test` ile test edilebilsin.
 
 ## Yol haritası
 
-- [ ] Gerçek konsolda ve RPCS3'te çalıştırıp kapak rafını ayarlamak
+- [x] RPCS3'te çalıştırıp kapak rafını tasarıma göre ayarlamak
+- [ ] Gerçek konsolda çalıştırıp bir oyunu baştan sona başlatmak
 - [ ] CFW'de düz `.iso` oyunları Cobra ile başlatmak
 - [ ] XMB'ye dönmek yerine placeholder'ı doğrudan başlatmak
 - [ ] FAT32 USB'lerdeki parçalı `.iso.0` / `.iso.1` imajları
