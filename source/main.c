@@ -198,7 +198,7 @@ static void handle_input(void)
 
 int main(int argc, const char *argv[])
 {
-    s32 system_lang;
+    s32 system_lang, tz_minutes = 0, summer_time = 0;
 
     (void)argc;
     (void)argv;
@@ -213,6 +213,10 @@ int main(int argc, const char *argv[])
         lang_set(LANG_TR);
 
     gfx_init();
+    sysUtilGetSystemParamInt(SYSUTIL_SYSTEMPARAM_ID_TIMEZONE, &tz_minutes);
+    sysUtilGetSystemParamInt(SYSUTIL_SYSTEMPARAM_ID_SUMMERTIME, &summer_time);
+    gfx_set_utc_offset(tz_minutes + (summer_time ? 60 : 0));
+
     library_init(&lib);
     scan_library();
 

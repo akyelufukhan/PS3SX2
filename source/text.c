@@ -27,17 +27,22 @@ unsigned cp1254_to_unicode(unsigned char c)
     }
 }
 
+char unicode_ascii_fallback(unsigned cp)
+{
+    switch (cp) {
+    case 0x011E: return 'G';
+    case 0x0130: return 'I';
+    case 0x015E: return 'S';
+    case 0x011F: return 'g';
+    case 0x0131: return 'i';
+    case 0x015F: return 's';
+    default:     return 0;
+    }
+}
+
 char cp1254_ascii_fallback(unsigned char c)
 {
-    switch (c) {
-    case 0xD0: return 'G';
-    case 0xDD: return 'I';
-    case 0xDE: return 'S';
-    case 0xF0: return 'g';
-    case 0xFD: return 'i';
-    case 0xFE: return 's';
-    default:   return 0;
-    }
+    return unicode_ascii_fallback(cp1254_to_unicode(c));
 }
 
 static char unicode_to_cp1254(unsigned cp)
@@ -53,42 +58,50 @@ static char unicode_to_cp1254(unsigned cp)
     return '?';
 }
 
+unsigned utf8_decode(const char **str)
+{
+    const unsigned char *s = (const unsigned char *)*str;
+    unsigned cp;
+    int extra;
+
+    if (*s == 0)
+        return 0;
+
+    if (*s < 0x80) {
+        cp = *s;
+        extra = 0;
+    } else if ((*s & 0xE0) == 0xC0) {
+        cp = *s & 0x1F;
+        extra = 1;
+    } else if ((*s & 0xF0) == 0xE0) {
+        cp = *s & 0x0F;
+        extra = 2;
+    } else if ((*s & 0xF8) == 0xF0) {
+        cp = *s & 0x07;
+        extra = 3;
+    } else {
+        *str = (const char *)s + 1;
+        return 0xFFFD;
+    }
+    s++;
+    while (extra > 0 && (*s & 0xC0) == 0x80) {
+        cp = (cp << 6) | (*s++ & 0x3F);
+        extra--;
+    }
+    *str = (const char *)s;
+    return extra ? 0xFFFD : cp;
+}
+
 size_t utf8_to_cp1254(const char *in, char *out, size_t outsize)
 {
-    const unsigned char *s = (const unsigned char *)in;
     size_t n = 0;
+    unsigned cp;
 
     if (outsize == 0)
         return 0;
 
-    while (*s && n + 1 < outsize) {
-        unsigned cp;
-        int extra;
-
-        if (*s < 0x80) {
-            cp = *s;
-            extra = 0;
-        } else if ((*s & 0xE0) == 0xC0) {
-            cp = *s & 0x1F;
-            extra = 1;
-        } else if ((*s & 0xF0) == 0xE0) {
-            cp = *s & 0x0F;
-            extra = 2;
-        } else if ((*s & 0xF8) == 0xF0) {
-            cp = *s & 0x07;
-            extra = 3;
-        } else {
-            s++;
-            out[n++] = '?';
-            continue;
-        }
-        s++;
-        while (extra > 0 && (*s & 0xC0) == 0x80) {
-            cp = (cp << 6) | (*s++ & 0x3F);
-            extra--;
-        }
-        out[n++] = extra ? '?' : unicode_to_cp1254(cp);
-    }
+    while (n + 1 < outsize && (cp = utf8_decode(&in)) != 0)
+        out[n++] = unicode_to_cp1254(cp);
     out[n] = '\0';
     return n;
 }

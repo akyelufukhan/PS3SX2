@@ -8,6 +8,9 @@
 void gfx_init(void);
 void gfx_shutdown(void);
 
+/* The console's time zone, in minutes east of UTC, for the header clock. */
+void gfx_set_utc_offset(int minutes);
+
 /* Forgets every loaded cover; call after the library is rescanned. */
 void gfx_reset_covers(void);
 

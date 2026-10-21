@@ -2,6 +2,7 @@
  * Host-side unit tests for the platform-independent parts of PS3SX2.
  * Build and run with `make -C tests`; no PS3 toolchain needed.
  */
+#include "canvas.h"
 #include "coverflow.h"
 #include "covers.h"
 #include "iso9660.h"
@@ -530,6 +531,26 @@ static void test_text(void)
 
     CHECK(cp1254_ascii_fallback(0xFD) == 'i');
     CHECK(cp1254_ascii_fallback('a') == 0);
+    CHECK(unicode_ascii_fallback(0x015E) == 'S');
+    CHECK(unicode_ascii_fallback(0x00FC) == 0);  /* ü is in every Latin font */
+}
+
+static void test_utf8_decode(void)
+{
+    const char *s = "aş€\xF0\x9F\x8E\xAE";
+    const char *bad = "\xC3" "x" "\xFF";
+
+    CHECK(utf8_decode(&s) == 'a');
+    CHECK(utf8_decode(&s) == 0x015F);
+    CHECK(utf8_decode(&s) == 0x20AC);
+    CHECK(utf8_decode(&s) == 0x1F3AE);
+    CHECK(utf8_decode(&s) == 0);
+    CHECK(utf8_decode(&s) == 0);  /* stays at the end */
+
+    CHECK(utf8_decode(&bad) == 0xFFFD);  /* cut-off sequence doesn't swallow the next byte */
+    CHECK(utf8_decode(&bad) == 'x');
+    CHECK(utf8_decode(&bad) == 0xFFFD);
+    CHECK(utf8_decode(&bad) == 0);
 }
 
 static void test_lang(void)
@@ -573,7 +594,11 @@ static void test_coverflow(void)
 
     coverflow_pose(1.0f, &side);
     CHECK(center.z < side.z);  /* selected cover is closest */
+    CHECK(near(center.focus, 1) && near(side.focus, 0));
+    coverflow_pose(-0.5f, &p);
+    CHECK(near(p.focus, 0.5f));
     CHECK(side.x > 0 && side.shade < 1);
+    CHECK(side.angle > 0);  /* checked in RPCS3: positive faces right-hand covers to the center */
 
     for (d = 0.25f; d < CF_VISIBLE; d += 0.5f) {
         coverflow_pose(d, &p);
@@ -602,6 +627,44 @@ static void test_coverflow(void)
     for (i = 0; i < 120; i++)
         pos = coverflow_step(pos, 7.0f);
     CHECK(pos == 7.0f);
+}
+
+static void test_canvas(void)
+{
+    uint32_t px[20 * 10];
+    canvas c = { px, 20, 10 };
+    static const unsigned char glyph[2 * 3] = { 255, 0, 128, 0, 0, 255 };
+
+    canvas_fill(&c, 0x00102030);
+    CHECK(px[0] == 0xff102030 && px[199] == 0xff102030);  /* always opaque */
+
+    canvas_rect(&c, 18, 8, 10, 10, 0xffffffff);  /* clipped at the bottom-right corner */
+    CHECK(px[8 * 20 + 18] == 0xffffffff && px[9 * 20 + 19] == 0xffffffff);
+    CHECK(px[7 * 20 + 18] == 0xff102030 && px[8 * 20 + 17] == 0xff102030);
+
+    canvas_rect(&c, -5, -5, 6, 6, 0x80ffffff);  /* half alpha, clipped at the top-left */
+    CHECK(px[0] == 0xff878f97);
+    CHECK(px[1] == 0xff102030);
+
+    canvas_fill(&c, 0);
+    canvas_disc(&c, 10, 5, 3, 0xff00ff00);
+    CHECK(px[5 * 20 + 10] == 0xff00ff00);
+    CHECK(px[0] == 0xff000000);
+
+    canvas_fill(&c, 0);
+    canvas_ring(&c, 10, 5, 4, 1, 0xffff0000);
+    CHECK(px[5 * 20 + 10] == 0xff000000);  /* hole in the middle */
+    CHECK((px[5 * 20 + 14] & 0x00ff0000) != 0);  /* on the ring */
+
+    canvas_disc(&c, -50, -50, 3, 0xffffffff);  /* entirely outside: no crash, no change */
+    canvas_ring(&c, 100, 100, 5, 2, 0xffffffff);
+    CHECK(px[0] == 0xff000000);
+
+    canvas_fill(&c, 0);
+    canvas_mask(&c, 19, 9, glyph, 2, 3, 3, 0xffffff);  /* mostly off-canvas */
+    CHECK(px[9 * 20 + 19] == 0xffffffff);
+    canvas_mask(&c, 0, 0, glyph, 3, 2, 3, 0xffffff);
+    CHECK(px[0] == 0xffffffff && px[1] == 0xff000000 && px[2] == 0xff808080 && px[22] == 0xffffffff);
 }
 
 static void test_covers(void)
@@ -644,6 +707,8 @@ int main(void)
     test_library_scan();
     test_launch_ps2classic();
     test_text();
+    test_utf8_decode();
+    test_canvas();
     test_lang();
     test_coverflow();
     test_covers();

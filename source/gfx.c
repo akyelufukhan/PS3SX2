@@ -1,5 +1,6 @@
 #include "gfx.h"
 
+#include "canvas.h"
 #include "coverflow.h"
 #include "covers.h"
 #include "lang.h"
@@ -12,6 +13,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #include <jpgdec/jpgdec.h>
 #include <libfont.h>
@@ -26,28 +28,37 @@
 
 /* Ships with every PS3 firmware, so we don't have to bundle (and license) a font. */
 #define FONT_PATH "/dev_flash/data/font/SCE-PS3-SR-R-LATIN2.TTF"
+#define FONT_CELL 32  /* libfont glyph cell size the TTF is baked at */
 
 #define TEXTURE_POOL (16 * 1024 * 1024)
 #define COVER_SLOTS  24
 #define COVER_MAX_W  256
 #define COVER_MAX_H  360
-#define COVER_Y      (-0.35f)  /* lift the carousel above the details panel */
+#define COVER_Y      0.63f   /* lift the carousel above the details panel (+y is up in 3D) */
+#define REFLECTION_H 0.32f   /* height of the mirrored cover below each case */
 
-#define COLOR_CLEAR    0xff0a0f1e  /* ARGB, for tiny3d_Clear */
-#define C_TEXT         0xe8ecf5ff  /* RGBA from here on */
-#define C_DIM          0x9aa6c8ff
-#define C_FAINT        0x6d7899ff
-#define C_ACCENT       0x7fa6ffff
-#define C_RULE         0xffffff18
-#define C_PANEL        0x050812e8
-#define C_TRACK        0x1d2a55ff
-#define C_COVER_BAND   0x111111ff
-#define C_BTN_CROSS    0x7fa6ffff
-#define C_BTN_CIRCLE   0xff7a7aff
-#define C_BTN_TRIANGLE 0x5fd3a0ff
+/* Layout rows, in Tiny3D's virtual 848 x 512 2D space. */
+#define ROW_HEADER 18
+#define ROW_TITLE  326
+#define ROW_CHIPS  362
+#define ROW_PATH   394
+#define ROW_RULE   452
+#define ROW_HINTS  466
 
-enum { SLOT_FREE, SLOT_READY, SLOT_MISSING };
-enum { ICON_CROSS, ICON_CIRCLE, ICON_TRIANGLE };
+#define COLOR_CLEAR 0xff0a0f1e  /* ARGB, for tiny3d_Clear */
+#define C_TEXT      0xe8ecf5ff  /* RGBA from here on */
+#define C_DIM       0x9aa6c8ff
+#define C_FAINT     0x6d7899ff
+#define C_ACCENT    0x7fa6ffff
+#define C_RULE      0xffffff14
+#define C_PANEL     0x050812eb
+#define C_TRACK     0x1d2a55ff
+#define C_CROSS     0x7fa6ffff
+#define C_CIRCLE    0xff7a7aff
+#define C_TRIANGLE  0x5fd3a0ff
+
+enum { SLOT_FREE, SLOT_READY };
+enum { ICON_NONE, ICON_CROSS, ICON_CIRCLE, ICON_TRIANGLE };
 
 typedef struct {
     int game;     /* library index this slot holds */
@@ -57,18 +68,35 @@ typedef struct {
     int w, h;
 } cover_slot;
 
+/* Case color and the accent used for its title and rings, as in the design mockup. */
+typedef struct {
+    u32 base, accent;
+} cover_palette;
+
+static const cover_palette palettes[] = {
+    { 0x4a1010, 0xd9a441 }, { 0x2c3530, 0xc9d6c4 }, { 0x3d2a12, 0xf2c14e },
+    { 0x1f3320, 0xa7c46a }, { 0x0f2a5a, 0x6fb2ff }, { 0x1a2350, 0xf5d76e },
+    { 0x3a0d2a, 0xff8fb1 }, { 0x4a1d06, 0xff9a3c }, { 0x11253a, 0x47e0c4 },
+};
+
 static cover_slot slots[COVER_SLOTS];
-static int font_ok;
+static short glyph_w[256];  /* advance of each baked character at FONT_CELL */
+static int font_ok, face_ok;
+static int utc_offset;
 static float anim_time;
 static FT_Library ft;
 static FT_Face face;
 
-static const u32 placeholder_colors[] = {
-    0x4a1010ff, 0x2c3530ff, 0x3d2a12ff, 0x1f3320ff, 0x0f2a5aff,
-    0x1a2350ff, 0x3a0d2aff, 0x4a1d06ff, 0x11253aff,
-};
-
 /* ------------------------------------------------------------------ fonts */
+
+static FT_UInt glyph_index(unsigned uni)
+{
+    FT_UInt index = uni ? FT_Get_Char_Index(face, uni) : 0;
+
+    if (!index && unicode_ascii_fallback(uni))
+        index = FT_Get_Char_Index(face, (unsigned char)unicode_ascii_fallback(uni));
+    return index;
+}
 
 /*
  * libfont asks for one 8-bit character at a time. Our codes are Windows-1254,
@@ -76,20 +104,16 @@ static const u32 placeholder_colors[] = {
  */
 static void ttf_glyph(u8 chr, u8 *bitmap, short *w, short *h, short *y_correction)
 {
-    FT_UInt index = 0;
     FT_GlyphSlot slot = face->glyph;
-    unsigned uni = cp1254_to_unicode(chr);
+    FT_UInt index = glyph_index(cp1254_to_unicode(chr));
     int n, m, src = 0;
 
     FT_Set_Pixel_Sizes(face, *w, *h);
     memset(bitmap, 0, (*w) * (*h));
 
-    if (uni)
-        index = FT_Get_Char_Index(face, uni);
-    if (!index && cp1254_ascii_fallback(chr))
-        index = FT_Get_Char_Index(face, (unsigned char)cp1254_ascii_fallback(chr));
     if (!index || FT_Load_Glyph(face, index, FT_LOAD_RENDER)) {
         *w = 0;
+        glyph_w[chr] = 0;
         return;
     }
 
@@ -104,8 +128,10 @@ static void ttf_glyph(u8 chr, u8 *bitmap, short *w, short *h, short *y_correctio
     }
     *w = ((slot->advance.x + 31) >> 6) + (slot->bitmap_left < 0 ? -slot->bitmap_left : 0);
     *h = slot->bitmap.rows;
+    glyph_w[chr] = *w;
 }
 
+/* Bakes the 2D UI font into `texture`; the FreeType face stays open for cover art. */
 static u8 *load_font(u8 *texture)
 {
     struct stat st;
@@ -117,14 +143,33 @@ static u8 *load_font(u8 *texture)
         FT_Done_FreeType(ft);
         return texture;
     }
-    texture = AddFontFromTTF(texture, 32, 255, 32, 32, ttf_glyph);
-    FT_Done_Face(face);
-    FT_Done_FreeType(ft);
+    face_ok = 1;
+    texture = AddFontFromTTF(texture, 32, 255, FONT_CELL, FONT_CELL, ttf_glyph);
     font_ok = 1;
     return texture;
 }
 
-/* Draws UTF-8 text and returns the x where the next string should start. */
+static int font_px(float size)
+{
+    return size < 8 ? 8 : (int)size;
+}
+
+/* Width of UTF-8 text at `size`, computed the same way libfont advances. */
+static int text_width(const char *utf8, float size)
+{
+    char buf[512];
+    const unsigned char *p;
+    int w = 0, s = font_px(size);
+
+    if (!font_ok)
+        return 0;
+    utf8_to_cp1254(utf8, buf, sizeof(buf));
+    for (p = (const unsigned char *)buf; *p; p++)
+        w += s * glyph_w[*p] / FONT_CELL;
+    return w;
+}
+
+/* Draws UTF-8 text with its top-left at (x, y); returns the x where the next string starts. */
 static float text(float x, float y, float size, u32 color, const char *utf8)
 {
     char buf[512];
@@ -132,7 +177,7 @@ static float text(float x, float y, float size, u32 color, const char *utf8)
     if (!font_ok)
         return x;
     utf8_to_cp1254(utf8, buf, sizeof(buf));
-    SetFontSize((int)size, (int)size);
+    SetFontSize(font_px(size), font_px(size));
     SetFontColor(color, 0);
     SetFontAutoCenter(0);
     return DrawString(x, y, buf);
@@ -140,16 +185,127 @@ static float text(float x, float y, float size, u32 color, const char *utf8)
 
 static void text_centered(float y, float size, u32 color, const char *utf8)
 {
-    char buf[512];
+    text((SCREEN_W - text_width(utf8, size)) / 2, y, size, color, utf8);
+}
 
-    if (!font_ok)
-        return;
-    utf8_to_cp1254(utf8, buf, sizeof(buf));
-    SetFontSize((int)size, (int)size);
-    SetFontColor(color, 0);
-    SetFontAutoCenter(1);
-    DrawString(0, y, buf);
-    SetFontAutoCenter(0);
+/* ------------------------------------------------------------- cover art */
+
+/* Draws UTF-8 text onto a canvas from `x` on `baseline`, stopping before `max_w`. Returns the width used. */
+static int art_text(canvas *c, int x, int baseline, int size, u32 rgb, const char *utf8, int max_w)
+{
+    FT_GlyphSlot slot = face->glyph;
+    unsigned cp;
+    int pen = 0;
+
+    FT_Set_Pixel_Sizes(face, 0, size);
+    while ((cp = utf8_decode(&utf8)) != 0) {
+        FT_UInt index = glyph_index(cp);
+        int advance;
+
+        if (!index || FT_Load_Glyph(face, index, c ? FT_LOAD_RENDER : FT_LOAD_DEFAULT))
+            continue;
+        advance = slot->advance.x >> 6;
+        if (pen + advance > max_w)
+            break;
+        if (c)
+            canvas_mask(c, x + pen + slot->bitmap_left, baseline - slot->bitmap_top, slot->bitmap.buffer,
+                        slot->bitmap.width, slot->bitmap.rows, slot->bitmap.pitch, rgb);
+        pen += advance;
+    }
+    return pen;
+}
+
+static int art_text_width(int size, const char *utf8)
+{
+    return art_text(NULL, 0, 0, size, 0, utf8, 1 << 30);
+}
+
+/* Bounded copy; a word too long for the line buffer is simply cut. */
+static void copy_text(char *dst, size_t size, const char *src, size_t len)
+{
+    if (len >= size)
+        len = size - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+}
+
+/* Greedy word wrap into at most `max_lines` lines no wider than `max_w`. */
+static int wrap_words(const char *title, int size, int max_w, char lines[][GAME_TITLE_MAX], int max_lines)
+{
+    char trial[GAME_TITLE_MAX];
+    const char *p = title;
+    int n = 0;
+
+    lines[0][0] = '\0';
+    while (*p && n < max_lines) {
+        size_t len = 0, used = strlen(lines[n]);
+
+        while (*p == ' ')
+            p++;
+        while (p[len] && p[len] != ' ')
+            len++;
+        if (len == 0)
+            break;
+
+        if (used == 0) {
+            copy_text(lines[n], GAME_TITLE_MAX, p, len);
+        } else if (used + 1 + len < sizeof(trial)) {
+            memcpy(trial, lines[n], used);
+            trial[used] = ' ';
+            copy_text(trial + used + 1, sizeof(trial) - used - 1, p, len);
+            if (art_text_width(size, trial) <= max_w)
+                memcpy(lines[n], trial, strlen(trial) + 1);
+            else if (++n < max_lines)
+                copy_text(lines[n], GAME_TITLE_MAX, p, len);
+        } else if (++n < max_lines) {
+            copy_text(lines[n], GAME_TITLE_MAX, p, len);
+        }
+        p += len;
+    }
+    return n < max_lines ? n + 1 : max_lines;
+}
+
+static const cover_palette *palette_for(const char *title)
+{
+    unsigned h = 5381;
+
+    while (*title)
+        h = h * 33 + (unsigned char)*title++;
+    return &palettes[h % (sizeof(palettes) / sizeof(palettes[0]))];
+}
+
+/*
+ * A cover for games without artwork, laid out like the design mockup: dark
+ * "PS2" band, title in the accent color, two rings, serial along the bottom.
+ */
+static void render_cover_art(cover_slot *slot, const game_t *g)
+{
+    canvas c = { slot->pixels, COVER_MAX_W, COVER_MAX_H };
+    const cover_palette *pal = palette_for(g->title);
+    const char *region = serial_region(g->serial);
+    char lines[5][GAME_TITLE_MAX];
+    int i, n;
+
+    canvas_fill(&c, pal->base);
+    canvas_ring(&c, 201, 303, 102, 4, 0x73000000 | pal->accent);
+    canvas_disc(&c, 194, 295, 43, 0x59000000 | pal->accent);
+    canvas_rect(&c, 0, 0, COVER_MAX_W, 38, 0xff111111);
+    canvas_rect(&c, 0, COVER_MAX_H - 38, COVER_MAX_W, 38, 0x59000000);
+
+    if (face_ok) {
+        art_text(&c, 14, 26, 19, 0xdddddd, "PS2", 80);
+        if (region[0])
+            art_text(&c, COVER_MAX_W - 14 - art_text_width(19, region), 26, 19, 0xdddddd, region, 120);
+
+        n = wrap_words(g->title, 30, COVER_MAX_W - 34, lines, 5);
+        for (i = 0; i < n; i++)
+            art_text(&c, 18, 86 + i * 35, 30, pal->accent, lines[i], COVER_MAX_W - 34);
+
+        art_text(&c, 14, COVER_MAX_H - 13, 18, 0xcccccc,
+                 g->serial[0] ? g->serial : (g->format == GAME_FMT_ISO ? "ISO" : "PS2 Classic"), 200);
+    }
+    slot->w = COVER_MAX_W;
+    slot->h = COVER_MAX_H;
 }
 
 /* ------------------------------------------------------------------ init */
@@ -177,7 +333,16 @@ void gfx_init(void)
 
 void gfx_shutdown(void)
 {
+    if (face_ok) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(ft);
+    }
     tiny3d_Exit();
+}
+
+void gfx_set_utc_offset(int minutes)
+{
+    utc_offset = minutes;
 }
 
 /* ----------------------------------------------------------------- covers */
@@ -276,15 +441,14 @@ static void load_cover(const library_t *lib, int game, int sel)
     if (!slot)
         return;
     slot->game = game;
-    slot->state = SLOT_MISSING;
+    slot->state = SLOT_READY;
 
     n = covers_candidates(&lib->games[game], paths, COVER_MAX_CANDIDATES);
     for (i = 0; i < n; i++) {
-        if (load_image(slot, paths[i]) == 0) {
-            slot->state = SLOT_READY;
+        if (load_image(slot, paths[i]) == 0)
             return;
-        }
     }
+    render_cover_art(slot, &lib->games[game]);
 }
 
 void gfx_update_covers(const library_t *lib, int sel)
@@ -317,16 +481,37 @@ static void rect(float x, float y, float w, float h, u32 color)
     tiny3d_End();
 }
 
+static void rounded_rect(float x, float y, float w, float h, float r, u32 color)
+{
+    static const float cx[4] = { 1, 1, 0, 0 }, cy[4] = { 0, 1, 1, 0 };
+    int corner, i;
+
+    tiny3d_SetPolygon(TINY3D_POLYGON);
+    for (corner = 0; corner < 4; corner++) {
+        float ox = x + r + cx[corner] * (w - 2 * r);
+        float oy = y + r + cy[corner] * (h - 2 * r);
+
+        for (i = 0; i <= 4; i++) {
+            float a = (corner * 90 - 90 + i * 22.5f) * 0.0174533f;
+
+            tiny3d_VertexPos(ox + cosf(a) * r, oy + sinf(a) * r, 0);
+            if (corner == 0 && i == 0)
+                tiny3d_VertexColor(color);
+        }
+    }
+    tiny3d_End();
+}
+
 static void button_icon(float cx, float cy, int kind)
 {
-    const float r = 7.0f;
+    const float r = 6.5f;
     int i;
 
     switch (kind) {
     case ICON_CROSS:
         tiny3d_SetPolygon(TINY3D_LINES);
         tiny3d_VertexPos(cx - r, cy - r, 0);
-        tiny3d_VertexColor(C_BTN_CROSS);
+        tiny3d_VertexColor(C_CROSS);
         tiny3d_VertexPos(cx + r, cy + r, 0);
         tiny3d_VertexPos(cx + r, cy - r, 0);
         tiny3d_VertexPos(cx - r, cy + r, 0);
@@ -339,14 +524,14 @@ static void button_icon(float cx, float cy, int kind)
 
             tiny3d_VertexPos(cx + cosf(a) * r, cy + sinf(a) * r, 0);
             if (i == 0)
-                tiny3d_VertexColor(C_BTN_CIRCLE);
+                tiny3d_VertexColor(C_CIRCLE);
         }
         tiny3d_End();
         break;
     case ICON_TRIANGLE:
         tiny3d_SetPolygon(TINY3D_LINE_LOOP);
         tiny3d_VertexPos(cx, cy - r, 0);
-        tiny3d_VertexColor(C_BTN_TRIANGLE);
+        tiny3d_VertexColor(C_TRIANGLE);
         tiny3d_VertexPos(cx + r, cy + r * 0.8f, 0);
         tiny3d_VertexPos(cx - r, cy + r * 0.8f, 0);
         tiny3d_End();
@@ -354,92 +539,167 @@ static void button_icon(float cx, float cy, int kind)
     }
 }
 
-/* An icon followed by its label; returns where the next hint goes. */
-static float hint(float x, float y, int icon, const char *label)
+typedef struct {
+    int icon;
+    const char *key;    /* drawn before the label when there's no icon, e.g. "L1/R1" */
+    const char *label;
+} hint_item;
+
+#define HINT_SIZE 15
+#define HINT_GAP  26
+
+static float hint_width(const hint_item *h)
 {
-    button_icon(x + 7, y + 8, icon);
-    return text(x + 22, y, 15, C_DIM, label) + 26;
+    float w = text_width(h->label, HINT_SIZE);
+
+    if (h->icon != ICON_NONE)
+        w += 21;
+    if (h->key)
+        w += text_width(h->key, HINT_SIZE) + 7;
+    return w;
 }
 
-/* Slow XMB-style waves behind everything. */
+/* A centered row of button hints, like the mockup's bottom bar. */
+static void draw_hint_row(const hint_item *items, int n, float y)
+{
+    float total = 0, x;
+    int i;
+
+    for (i = 0; i < n; i++)
+        total += hint_width(&items[i]) + (i ? HINT_GAP : 0);
+
+    x = (SCREEN_W - total) / 2;
+    for (i = 0; i < n; i++) {
+        float start = x;
+
+        if (items[i].icon != ICON_NONE) {
+            button_icon(x + 7, y + 8, items[i].icon);
+            x += 21;
+        }
+        if (items[i].key)
+            x = text(x, y, HINT_SIZE, C_FAINT, items[i].key) + 7;
+        text(x, y, HINT_SIZE, C_DIM, items[i].label);
+        x = start + hint_width(&items[i]) + HINT_GAP;
+    }
+}
+
+/* Slow XMB-style waves behind everything, drawn as thin translucent ribbons. */
 static void draw_waves(float t)
 {
-    static const u32 colors[] = { 0x3b4f9e70, 0x5a6fc44c, 0x3b4f9e38 };
+    static const u32 colors[] = { 0x3b4f9e73, 0x5a6fc44d, 0x3b4f9e38 };
+    static const float thickness[] = { 1.6f, 1.1f, 1.1f };
     int k, i;
 
     for (k = 0; k < 3; k++) {
-        tiny3d_SetPolygon(TINY3D_LINE_STRIP);
-        for (i = 0; i <= 64; i++) {
-            float x = SCREEN_W * i / 64;
-            float y = 300 + k * 18 + sinf(x * 0.008f + t * (0.35f + 0.15f * k) + k) * (26 - k * 6);
+        tiny3d_SetPolygon(TINY3D_TRIANGLE_STRIP);
+        for (i = 0; i <= 96; i++) {
+            float x = SCREEN_W * i / 96;
+            float y = 286 + k * 20 + sinf(x * 0.0075f + t * (0.35f + 0.12f * k) + k * 1.3f) * (30 - k * 7);
 
-            tiny3d_VertexPos(x, y, 65535);
+            tiny3d_VertexPos(x, y - thickness[k], 65535);
             if (i == 0)
                 tiny3d_VertexColor(colors[k]);
+            tiny3d_VertexPos(x, y + thickness[k], 65535);
         }
         tiny3d_End();
     }
 }
 
-static u32 shaded(u32 rgba, float shade, float alpha)
+static u32 rgba(float r, float g, float b, float a)
 {
-    u32 r = (u32)(((rgba >> 24) & 0xff) * shade);
-    u32 g = (u32)(((rgba >> 16) & 0xff) * shade);
-    u32 b = (u32)(((rgba >> 8) & 0xff) * shade);
-    u32 a = (u32)((rgba & 0xff) * alpha);
-
-    return (r << 24) | (g << 16) | (b << 8) | a;
+    return ((u32)(r * 255) << 24) | ((u32)(g * 255) << 16) | ((u32)(b * 255) << 8) | (u32)(a * 255);
 }
 
-static u32 placeholder_color(const char *title)
-{
-    unsigned h = 5381;
+/* ------------------------------------------------------------------ covers */
 
-    while (*title)
-        h = h * 33 + (unsigned char)*title++;
-    return placeholder_colors[h % (sizeof(placeholder_colors) / sizeof(placeholder_colors[0]))];
+static void textured_quad(float w, float top, float bottom, float v_top, float v_bottom, u32 c_top, u32 c_bottom)
+{
+    tiny3d_SetPolygon(TINY3D_QUADS);
+    tiny3d_VertexPos(-w, top, 0);
+    tiny3d_VertexColor(c_top);
+    tiny3d_VertexTexture(0.0f, v_top);
+    tiny3d_VertexPos(w, top, 0);
+    tiny3d_VertexColor(c_top);
+    tiny3d_VertexTexture(1.0f, v_top);
+    tiny3d_VertexPos(w, bottom, 0);
+    tiny3d_VertexColor(c_bottom);
+    tiny3d_VertexTexture(1.0f, v_bottom);
+    tiny3d_VertexPos(-w, bottom, 0);
+    tiny3d_VertexColor(c_bottom);
+    tiny3d_VertexTexture(0.0f, v_bottom);
+    tiny3d_End();
 }
 
-/* One cover as a quad centered on the model origin. */
+/* One case centered on the model origin, with its reflection and frame. Unlike 2D mode, +y is up in 3D. */
 static void draw_cover(const game_t *g, const cover_slot *slot, const cf_pose *p)
 {
-    const float w = CF_COVER_W / 2, h = CF_COVER_H / 2;
+    const float w = CF_COVER_W / 2, top = CF_COVER_H / 2, bottom = -CF_COVER_H / 2;
+    const float s = p->shade;
     MATRIX m = MatrixMultiply(MatrixRotationY(p->angle), MatrixTranslation(p->x, COVER_Y, p->z));
 
     tiny3d_SetMatrixModelView(&m);
 
     if (slot && slot->state == SLOT_READY) {
         tiny3d_SetTexture(0, slot->offset, slot->w, slot->h, slot->w * 4, TINY3D_TEX_FORMAT_A8R8G8B8, TEXTURE_LINEAR);
+        textured_quad(w, top, bottom, 0.0f, 1.0f, rgba(s, s, s, p->alpha), rgba(s, s, s, p->alpha));
+        /* Mirror of the lower part of the case, fading out downwards. */
+        textured_quad(w, bottom - 0.03f, bottom - 0.03f - REFLECTION_H, 1.0f, 1.0f - REFLECTION_H / CF_COVER_H,
+                      rgba(s * 0.7f, s * 0.7f, s * 0.7f, 0.24f * p->alpha), rgba(s * 0.7f, s * 0.7f, s * 0.7f, 0.0f));
+    } else {
+        /* Artwork not decoded yet: a plain case for a frame or two. */
+        u32 base = palette_for(g->title)->base;
+
         tiny3d_SetPolygon(TINY3D_QUADS);
-        tiny3d_VertexPos(-w, -h, 0);
-        tiny3d_VertexColor(shaded(0xffffffff, p->shade, p->alpha));
-        tiny3d_VertexTexture(0.0f, 0.0f);
-        tiny3d_VertexPos(w, -h, 0);
-        tiny3d_VertexTexture(1.0f, 0.0f);
-        tiny3d_VertexPos(w, h, 0);
-        tiny3d_VertexTexture(1.0f, 1.0f);
-        tiny3d_VertexPos(-w, h, 0);
-        tiny3d_VertexTexture(0.0f, 1.0f);
+        tiny3d_VertexPos(-w, top, 0);
+        tiny3d_VertexColor(rgba(((base >> 16) & 0xff) / 255.0f * s, ((base >> 8) & 0xff) / 255.0f * s,
+                                (base & 0xff) / 255.0f * s, p->alpha));
+        tiny3d_VertexPos(w, top, 0);
+        tiny3d_VertexPos(w, bottom, 0);
+        tiny3d_VertexPos(-w, bottom, 0);
         tiny3d_End();
-        return;
     }
 
-    /* No artwork: a plain case in a color derived from the title, with the dark top band. */
-    tiny3d_SetPolygon(TINY3D_QUADS);
-    tiny3d_VertexPos(-w, -h, 0);
-    tiny3d_VertexColor(shaded(C_COVER_BAND, p->shade, p->alpha));
-    tiny3d_VertexPos(w, -h, 0);
-    tiny3d_VertexPos(w, -h + 0.22f, 0);
-    tiny3d_VertexPos(-w, -h + 0.22f, 0);
+    /* Hairline frame, brighter on the selected case. */
+    tiny3d_SetPolygon(TINY3D_LINE_LOOP);
+    tiny3d_VertexPos(-w, top, 0);
+    tiny3d_VertexColor(rgba(1, 1, 1, (0.18f + 0.37f * p->focus) * p->alpha));
+    tiny3d_VertexPos(w, top, 0);
+    tiny3d_VertexPos(w, bottom, 0);
+    tiny3d_VertexPos(-w, bottom, 0);
     tiny3d_End();
+}
 
-    tiny3d_SetPolygon(TINY3D_QUADS);
-    tiny3d_VertexPos(-w, -h + 0.22f, 0);
-    tiny3d_VertexColor(shaded(placeholder_color(g->title), p->shade, p->alpha));
-    tiny3d_VertexPos(w, -h + 0.22f, 0);
-    tiny3d_VertexPos(w, h, 0);
-    tiny3d_VertexPos(-w, h, 0);
-    tiny3d_End();
+static void draw_carousel(const library_t *lib, float pos)
+{
+    MATRIX proj = MatrixProjPerspective(90, (Video_aspect == 1) ? 9.0f / 16.0f : 1.0f, 0.00125f, 300.0f);
+    int order[2 * (int)CF_VISIBLE + 2];
+    int i, n = 0;
+    int first = (int)floorf(pos - CF_VISIBLE), last = (int)ceilf(pos + CF_VISIBLE);
+
+    tiny3d_Project3D();
+    tiny3d_SetProjectionMatrix(&proj);
+
+    for (i = first < 0 ? 0 : first; i <= last && i < lib->count; i++)
+        order[n++] = i;
+
+    /* Painter's order: outermost covers first, the selected one last. */
+    for (i = 1; i < n; i++) {
+        int v = order[i], j = i - 1;
+
+        while (j >= 0 && fabsf(order[j] - pos) < fabsf(v - pos)) {
+            order[j + 1] = order[j];
+            j--;
+        }
+        order[j + 1] = v;
+    }
+    for (i = 0; i < n; i++) {
+        cf_pose p;
+
+        coverflow_pose(order[i] - pos, &p);
+        if (p.alpha > 0.0f)
+            draw_cover(&lib->games[order[i]], find_slot(order[i]), &p);
+    }
+    tiny3d_SetMatrixModelView(NULL);
 }
 
 /* ------------------------------------------------------------------ frame */
@@ -449,7 +709,7 @@ void gfx_frame_begin(void)
     anim_time += 1.0f / 60.0f;
 
     tiny3d_Clear(COLOR_CLEAR, TINY3D_CLEAR_ALL);
-    tiny3d_AlphaTest(1, 0x10, TINY3D_ALPHA_FUNC_GEQUAL);
+    tiny3d_AlphaTest(1, 0x01, TINY3D_ALPHA_FUNC_GEQUAL);
     tiny3d_BlendFunc(1, TINY3D_BLEND_FUNC_SRC_RGB_SRC_ALPHA | TINY3D_BLEND_FUNC_SRC_ALPHA_SRC_ALPHA,
                      TINY3D_BLEND_FUNC_DST_RGB_ONE_MINUS_SRC_ALPHA | TINY3D_BLEND_FUNC_DST_ALPHA_ZERO,
                      TINY3D_BLEND_RGB_FUNC_ADD | TINY3D_BLEND_ALPHA_FUNC_ADD);
@@ -471,74 +731,84 @@ static void format_size(unsigned long long bytes, char *out, size_t size)
         snprintf(out, size, "%.0f MB", bytes / (1024.0 * 1024));
 }
 
+static void draw_header(const library_t *lib)
+{
+    char count[48], clock[32] = "", right[96];
+    time_t now = time(NULL) + utc_offset * 60;
+    struct tm *t = gmtime(&now);
+    float x;
+
+    x = text(40, ROW_HEADER, 18, C_ACCENT, "PS3SX2");
+    text(x + 12, ROW_HEADER, 18, C_TEXT, lang_str(STR_LIBRARY));
+
+    snprintf(count, sizeof(count), lang_str(STR_GAME_COUNT), lib->count);
+    if (t)
+        snprintf(clock, sizeof(clock), "%02d:%02d", t->tm_hour, t->tm_min);
+    snprintf(right, sizeof(right), "%s   %s", count, clock);
+    text(SCREEN_W - 40 - text_width(right, 15), ROW_HEADER + 3, 15, C_DIM, right);
+}
+
+typedef struct {
+    const char *label;
+    u32 bg, fg;
+} chip;
+
+/* Serial, region, size and format as small rounded tags, centered under the title. */
+static void draw_chips(const chip *chips, int n, float y)
+{
+    const float size = 14, pad = 10, gap = 8, h = 22;
+    float total = 0, x;
+    int i;
+
+    for (i = 0; i < n; i++)
+        total += text_width(chips[i].label, size) + 2 * pad + (i ? gap : 0);
+
+    x = (SCREEN_W - total) / 2;
+    for (i = 0; i < n; i++) {
+        float w = text_width(chips[i].label, size) + 2 * pad;
+
+        rounded_rect(x, y, w, h, 5, chips[i].bg);
+        text(x + pad, y + 3, size, chips[i].fg, chips[i].label);
+        x += w + gap;
+    }
+}
+
 static void draw_details(const library_t *lib, int sel)
 {
     const game_t *g = &lib->games[sel];
     const char *name = strrchr(g->path, '/');
-    char size[32], line[256];
+    const char *region = serial_region(g->serial);
+    char size[32], line[GAME_PATH_MAX + 32];
+    chip chips[4];
+    int n = 0;
+
+    text_centered(ROW_TITLE, 24, C_TEXT, g->title);
 
     format_size(g->size, size, sizeof(size));
-    text_centered(352, 26, C_TEXT, g->title);
-
-    if (g->serial[0])
-        snprintf(line, sizeof(line), "%s  ·  %s  ·  %s  ·  %s", g->serial, serial_region(g->serial), size,
-                 g->format == GAME_FMT_ISO ? "ISO" : "PS2 Classic");
-    else
-        snprintf(line, sizeof(line), "%s  ·  %s  ·  %s", lang_str(STR_UNKNOWN_SERIAL), size,
-                 g->format == GAME_FMT_ISO ? "ISO" : "PS2 Classic");
-    text_centered(390, 15, C_DIM, line);
+    chips[n++] = (chip){ g->serial[0] ? g->serial : lang_str(STR_UNKNOWN_SERIAL), 0x1d2a55ff, 0xb9c8ffff };
+    if (region[0])
+        chips[n++] = (chip){ region, 0x1c3a33ff, 0x9fe1cbff };
+    chips[n++] = (chip){ size, 0x2a2a35ff, 0xc9cbd6ff };
+    chips[n++] = (chip){ g->format == GAME_FMT_ISO ? "ISO" : "PS2 Classic", 0x2d2550ff, 0xc8b8ffff };
+    draw_chips(chips, n, ROW_CHIPS);
 
     snprintf(line, sizeof(line), "%d / %d  ·  %s", sel + 1, lib->count, name ? name + 1 : g->path);
-    text_centered(414, 13, C_FAINT, line);
+    text_centered(ROW_PATH, 14, C_FAINT, line);
 }
 
 void gfx_draw_library(const library_t *lib, float pos, int sel, int show_ui)
 {
-    char line[64];
-    float x;
-    int order[2 * (int)CF_VISIBLE + 2];
-    int i, n = 0, first, last;
+    hint_item hints[4];
+    int n = 0;
 
-    if (lib->count > 0) {
-        MATRIX proj = MatrixProjPerspective(90, (Video_aspect == 1) ? 9.0f / 16.0f : 1.0f, 0.00125f, 300.0f);
-
-        tiny3d_Project3D();
-        tiny3d_SetProjectionMatrix(&proj);
-
-        first = (int)floorf(pos - CF_VISIBLE);
-        last = (int)ceilf(pos + CF_VISIBLE);
-        for (i = first < 0 ? 0 : first; i <= last && i < lib->count; i++)
-            order[n++] = i;
-
-        /* Painter's order: outermost covers first, the selected one last. */
-        for (i = 1; i < n; i++) {
-            int v = order[i], j = i - 1;
-
-            while (j >= 0 && fabsf(order[j] - pos) < fabsf(v - pos)) {
-                order[j + 1] = order[j];
-                j--;
-            }
-            order[j + 1] = v;
-        }
-        for (i = 0; i < n; i++) {
-            cf_pose p;
-
-            coverflow_pose(order[i] - pos, &p);
-            if (p.alpha > 0.0f)
-                draw_cover(&lib->games[order[i]], find_slot(order[i]), &p);
-        }
-        tiny3d_SetMatrixModelView(NULL);
-    }
+    if (lib->count > 0)
+        draw_carousel(lib, pos);
 
     if (!show_ui)
         return;
 
     tiny3d_Project2D();
-
-    x = text(40, 26, 20, C_ACCENT, "PS3SX2");
-    x = text(x + 14, 29, 16, C_DIM, lang_str(STR_LIBRARY));
-    snprintf(line, sizeof(line), lang_str(STR_GAME_COUNT), lib->count);
-    text(x + 14, 29, 16, C_FAINT, line);
+    draw_header(lib);
 
     if (lib->count > 0) {
         draw_details(lib, sel);
@@ -547,34 +817,57 @@ void gfx_draw_library(const library_t *lib, float pos, int sel, int show_ui)
         text_centered(250, 14, C_DIM, lang_str(STR_EMPTY_HINT));
     }
 
-    rect(0, 448, SCREEN_W, 1, C_RULE);
-    x = 40;
+    rect(40, ROW_RULE, SCREEN_W - 80, 1, C_RULE);
     if (lib->count > 0)
-        x = hint(x, 466, ICON_CROSS, lang_str(STR_LAUNCH));
-    x = hint(x, 466, ICON_CIRCLE, lang_str(STR_EXIT));
-    x = hint(x, 466, ICON_TRIANGLE, lang_str(STR_RESCAN));
-    if (lib->count > 0) {
-        x = text(x, 466, 15, C_FAINT, "L1/R1");
-        text(x + 8, 466, 15, C_DIM, lang_str(STR_FAST_SCROLL));
+        hints[n++] = (hint_item){ ICON_CROSS, NULL, lang_str(STR_LAUNCH) };
+    hints[n++] = (hint_item){ ICON_CIRCLE, NULL, lang_str(STR_EXIT) };
+    hints[n++] = (hint_item){ ICON_TRIANGLE, NULL, lang_str(STR_RESCAN) };
+    if (lib->count > 0)
+        hints[n++] = (hint_item){ ICON_NONE, "L1/R1", lang_str(STR_FAST_SCROLL) };
+    draw_hint_row(hints, n, ROW_HINTS);
+}
+
+/* Three-quarter ring that keeps turning while something is in progress. */
+static void spinner(float cx, float cy, float r)
+{
+    float start = anim_time * 6.0f;
+    int i;
+
+    tiny3d_SetPolygon(TINY3D_LINE_STRIP);
+    for (i = 0; i <= 18; i++) {
+        float a = start + i * (4.712389f / 18);
+
+        tiny3d_VertexPos(cx + cosf(a) * r, cy + sinf(a) * r, 0);
+        if (i == 0)
+            tiny3d_VertexColor(C_ACCENT);
     }
+    tiny3d_End();
 }
 
 void gfx_draw_overlay(const char *title, const char *detail, float progress, int show_continue)
 {
+    hint_item h;
+
     tiny3d_Project2D();
     rect(0, 0, SCREEN_W, SCREEN_H, C_PANEL);
 
-    text_centered(200, 22, C_TEXT, title);
+    if (progress >= 0.0f)
+        spinner(SCREEN_W / 2, 176, 11);
+
+    text_centered(204, 22, C_TEXT, title);
     if (detail && detail[0])
         text_centered(238, 15, C_DIM, detail);
 
     if (progress >= 0.0f) {
         if (progress > 1.0f)
             progress = 1.0f;
-        rect(224, 282, 400, 6, C_TRACK);
-        rect(224, 282, 400 * progress, 6, C_ACCENT);
-        hint(386, 308, ICON_CIRCLE, lang_str(STR_CANCEL));
+        rounded_rect(224, 278, 400, 8, 4, C_TRACK);
+        if (progress > 0.02f)
+            rounded_rect(224, 278, 400 * progress, 8, 4, C_ACCENT);
+        h = (hint_item){ ICON_CIRCLE, NULL, lang_str(STR_CANCEL) };
+        draw_hint_row(&h, 1, 306);
     } else if (show_continue) {
-        hint(370, 290, ICON_CROSS, lang_str(STR_CONTINUE));
+        h = (hint_item){ ICON_CROSS, NULL, lang_str(STR_CONTINUE) };
+        draw_hint_row(&h, 1, 286);
     }
 }

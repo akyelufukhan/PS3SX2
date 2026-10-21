@@ -9,6 +9,12 @@
  * and game titles alike - are converted before they're drawn.
  */
 
+/*
+ * Decodes one UTF-8 character and advances *s past it. Invalid or cut-off
+ * sequences give U+FFFD. Returns 0 at the end of the string.
+ */
+unsigned utf8_decode(const char **s);
+
 /* Converts UTF-8 to Windows-1254; unmappable characters become '?'. Always NUL-terminates. */
 size_t utf8_to_cp1254(const char *in, char *out, size_t outsize);
 
@@ -16,6 +22,7 @@ size_t utf8_to_cp1254(const char *in, char *out, size_t outsize);
 unsigned cp1254_to_unicode(unsigned char c);
 
 /* ASCII stand-in for the Turkish-only letters (ğ -> g), for fonts that lack them; 0 otherwise. */
+char unicode_ascii_fallback(unsigned cp);
 char cp1254_ascii_fallback(unsigned char c);
 
 #endif

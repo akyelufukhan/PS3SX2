@@ -2,7 +2,7 @@
 
 #include <math.h>
 
-#define CF_CENTER_Z 3.2f   /* depth of the selected cover */
+#define CF_CENTER_Z 3.5f   /* depth of the selected cover */
 #define CF_SIDE_Z   4.2f   /* depth of every other cover */
 #define CF_SIDE_X   1.9f   /* gap between the selected cover and its neighbours */
 #define CF_STACK_X  0.55f  /* gap between consecutive side covers */
@@ -19,14 +19,15 @@ void coverflow_pose(float offset, cf_pose *out)
         /* Between the center slot and the first side slot: blend. */
         out->x = offset * CF_SIDE_X;
         out->z = CF_CENTER_Z + (CF_SIDE_Z - CF_CENTER_Z) * a;
-        out->angle = -s * CF_ANGLE * a;
-        out->shade = 1.0f - CF_DIM * a;
+        out->angle = s * CF_ANGLE * a;
+        out->focus = 1.0f - a;
     } else {
         out->x = s * (CF_SIDE_X + (a - 1.0f) * CF_STACK_X);
         out->z = CF_SIDE_Z;
-        out->angle = -s * CF_ANGLE;
-        out->shade = 1.0f - CF_DIM;
+        out->angle = s * CF_ANGLE;
+        out->focus = 0.0f;
     }
+    out->shade = 1.0f - CF_DIM * (1.0f - out->focus);
 
     if (a <= CF_VISIBLE - 1.0f)
         out->alpha = 1.0f;

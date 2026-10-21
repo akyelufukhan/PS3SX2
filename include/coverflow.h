@@ -3,7 +3,7 @@
 
 /*
  * Layout math for the cover carousel, kept free of any PS3 code so it can be
- * unit tested. Units are Tiny3D world units: x to the right, z into the screen.
+ * unit tested. Units are Tiny3D world units: x to the right, y up, z into the screen.
  */
 
 #define CF_COVER_W  1.5f   /* PS2 case is roughly 135 x 190 mm */
@@ -13,7 +13,8 @@
 typedef struct {
     float x;      /* horizontal position */
     float z;      /* depth; the centered cover sits closest to the camera */
-    float angle;  /* rotation around Y in radians; side covers turn toward the center */
+    float angle;  /* rotation around Y in radians; positive turns a right-hand cover toward the center */
+    float focus;  /* 1 for the centered cover, falling to 0 one slot away */
     float shade;  /* 1 = full brightness, side covers are dimmed */
     float alpha;  /* fades out the outermost covers */
 } cf_pose;
