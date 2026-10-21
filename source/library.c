@@ -20,6 +20,17 @@ static int ends_with_ci(const char *s, const char *suffix)
     return a >= b && strcasecmp(s + a - b, suffix) == 0;
 }
 
+/* Titles are only for display, so cutting a long one short is fine. */
+static void copy_truncated(char *dst, size_t size, const char *src)
+{
+    size_t n = strlen(src);
+
+    if (n >= size)
+        n = size - 1;
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
 int library_format_of(const char *filename)
 {
     /* Skips hidden files, including the "._name" metadata macOS leaves on FAT drives. */
@@ -113,7 +124,8 @@ void library_title_from_filename(const char *filename, char *out, int outsize)
         w--;
     buf[w] = '\0';
 
-    snprintf(out, outsize, "%s", buf);
+    if (outsize > 0)
+        copy_truncated(out, (size_t)outsize, buf);
 }
 
 int library_scan_dir(library_t *lib, const char *dir)
@@ -152,7 +164,7 @@ int library_scan_dir(library_t *lib, const char *dir)
 
         library_title_from_filename(e->d_name, g->title, sizeof(g->title));
         if (!g->title[0])
-            snprintf(g->title, sizeof(g->title), "%s", g->serial[0] ? g->serial : e->d_name);
+            copy_truncated(g->title, sizeof(g->title), g->serial[0] ? g->serial : e->d_name);
         added++;
     }
     closedir(d);

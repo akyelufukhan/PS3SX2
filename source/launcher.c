@@ -67,14 +67,11 @@ static int find_config(const char *game_path, char *out, size_t outsize)
 {
     size_t len = strlen(game_path);
 
-    snprintf(out, outsize, "%s.CONFIG", game_path);
-    if (is_file(out))
+    if (snprintf(out, outsize, "%s.CONFIG", game_path) < (int)outsize && is_file(out))
         return 0;
-    if (len > 8 && strcasecmp(game_path + len - 8, ".BIN.ENC") == 0) {
-        snprintf(out, outsize, "%.*s.CONFIG", (int)(len - 8), game_path);
-        if (is_file(out))
-            return 0;
-    }
+    if (len > 8 && strcasecmp(game_path + len - 8, ".BIN.ENC") == 0 &&
+        snprintf(out, outsize, "%.*s.CONFIG", (int)(len - 8), game_path) < (int)outsize && is_file(out))
+        return 0;
     return -1;
 }
 
@@ -88,10 +85,12 @@ launch_result launch_ps2classic(const game_t *g, const char *placeholder_dir,
     if (!is_dir(placeholder_dir))
         return LAUNCH_ERR_NO_PLACEHOLDER;
 
-    snprintf(usrdir, sizeof(usrdir), "%s/USRDIR", placeholder_dir);
-    snprintf(iso, sizeof(iso), "%s/ISO.BIN.ENC", usrdir);
-    snprintf(tmp, sizeof(tmp), "%s/ISO.BIN.ENC.tmp", usrdir);
-    snprintf(config_dst, sizeof(config_dst), "%s/CONFIG", usrdir);
+    /* A cut-off path would point somewhere else entirely, so refuse instead. */
+    if (snprintf(usrdir, sizeof(usrdir), "%s/USRDIR", placeholder_dir) >= (int)sizeof(usrdir) ||
+        snprintf(iso, sizeof(iso), "%s/ISO.BIN.ENC", usrdir) >= (int)sizeof(iso) ||
+        snprintf(tmp, sizeof(tmp), "%s/ISO.BIN.ENC.tmp", usrdir) >= (int)sizeof(tmp) ||
+        snprintf(config_dst, sizeof(config_dst), "%s/CONFIG", usrdir) >= (int)sizeof(config_dst))
+        return LAUNCH_ERR_COPY;
     mkdir(usrdir, 0777);
 
     /* Drop the previous game first: the drive may not have room for two images,
