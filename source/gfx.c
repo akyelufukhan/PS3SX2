@@ -30,6 +30,9 @@
 #define FONT_PATH "/dev_flash/data/font/SCE-PS3-SR-R-LATIN2.TTF"
 #define FONT_CELL 32  /* libfont glyph cell size the TTF is baked at */
 
+#define PI_F      3.1415926f
+#define ARC_STEPS 6     /* segments per rounded corner */
+
 #define TEXTURE_POOL (16 * 1024 * 1024)
 #define COVER_SLOTS  24
 #define COVER_MAX_W  256
@@ -53,12 +56,13 @@
 #define C_RULE      0xffffff14
 #define C_PANEL     0x050812eb
 #define C_TRACK     0x1d2a55ff
-#define C_CROSS     0x7fa6ffff
-#define C_CIRCLE    0xff7a7aff
-#define C_TRIANGLE  0x5fd3a0ff
+#define C_CROSS     0x86b8f2ff  /* DualShock symbol colors */
+#define C_CIRCLE    0xff6f7dff
+#define C_TRIANGLE  0x45dcb0ff
+#define C_SQUARE    0xf2a5dcff
 
 enum { SLOT_FREE, SLOT_READY };
-enum { ICON_NONE, ICON_CROSS, ICON_CIRCLE, ICON_TRIANGLE };
+enum { ICON_CROSS, ICON_CIRCLE, ICON_TRIANGLE, ICON_SQUARE, ICON_SHOULDERS };
 
 typedef struct {
     int game;     /* library index this slot holds */
@@ -481,88 +485,234 @@ static void rect(float x, float y, float w, float h, u32 color)
     tiny3d_End();
 }
 
-static void rounded_rect(float x, float y, float w, float h, float r, u32 color)
+static void vtx(float x, float y, u32 color)
 {
-    static const float cx[4] = { 1, 1, 0, 0 }, cy[4] = { 0, 1, 1, 0 };
-    int corner, i;
+    tiny3d_VertexPos(x, y, 0);
+    tiny3d_VertexColor(color);
+}
 
-    tiny3d_SetPolygon(TINY3D_POLYGON);
+/* Per-channel blend of two RGBA colors. */
+static u32 mix(u32 a, u32 b, float t)
+{
+    u32 out = 0;
+    int shift;
+
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    for (shift = 0; shift < 32; shift += 8) {
+        float ca = (a >> shift) & 0xff, cb = (b >> shift) & 0xff;
+
+        out |= (u32)(ca + (cb - ca) * t + 0.5f) << shift;
+    }
+    return out;
+}
+
+/* Outline points of a rounded rectangle, clockwise from the top-left corner. */
+static int rounded_outline(float x, float y, float w, float h, float r, float *px, float *py)
+{
+    int corner, step, count = 0;
+
+    if (r < 0.0f) r = 0.0f;
+    if (r > w * 0.5f) r = w * 0.5f;
+    if (r > h * 0.5f) r = h * 0.5f;
     for (corner = 0; corner < 4; corner++) {
-        float ox = x + r + cx[corner] * (w - 2 * r);
-        float oy = y + r + cy[corner] * (h - 2 * r);
+        float cx = (corner == 0 || corner == 3) ? x + r : x + w - r;
+        float cy = corner < 2 ? y + r : y + h - r;
+        float start = PI_F + corner * PI_F * 0.5f;
 
-        for (i = 0; i <= 4; i++) {
-            float a = (corner * 90 - 90 + i * 22.5f) * 0.0174533f;
+        for (step = 0; step <= ARC_STEPS; step++) {
+            float a = start + step * (PI_F * 0.5f) / ARC_STEPS;
 
-            tiny3d_VertexPos(ox + cosf(a) * r, oy + sinf(a) * r, 0);
-            if (corner == 0 && i == 0)
-                tiny3d_VertexColor(color);
+            px[count] = cx + cosf(a) * r;
+            py[count] = cy + sinf(a) * r;
+            count++;
         }
+    }
+    return count;
+}
+
+/* Rounded rectangle shaded from `top` to `bottom`. */
+static void round_grad(float x, float y, float w, float h, float r, u32 top, u32 bottom)
+{
+    float px[4 * (ARC_STEPS + 1)], py[4 * (ARC_STEPS + 1)];
+    float cx = x + w * 0.5f, cy = y + h * 0.5f;
+    int count, i;
+
+    if (w <= 0.0f || h <= 0.0f)
+        return;
+    count = rounded_outline(x, y, w, h, r, px, py);
+    tiny3d_SetPolygon(TINY3D_TRIANGLES);
+    for (i = 0; i < count; i++) {
+        int j = (i + 1) % count;
+
+        vtx(cx, cy, mix(top, bottom, 0.5f));
+        vtx(px[i], py[i], mix(top, bottom, (py[i] - y) / h));
+        vtx(px[j], py[j], mix(top, bottom, (py[j] - y) / h));
     }
     tiny3d_End();
 }
 
-static void button_icon(float cx, float cy, int kind)
+static void rounded_rect(float x, float y, float w, float h, float r, u32 color)
 {
-    const float r = 6.5f;
+    round_grad(x, y, w, h, r, color, color);
+}
+
+/* Band around a rounded rectangle fading from `inner` to `outer`, for soft shadows. */
+static void round_band(float x, float y, float w, float h, float r, float spread, u32 inner, u32 outer)
+{
+    float ix[4 * (ARC_STEPS + 1)], iy[4 * (ARC_STEPS + 1)];
+    float ox[4 * (ARC_STEPS + 1)], oy[4 * (ARC_STEPS + 1)];
+    int count, i;
+
+    count = rounded_outline(x, y, w, h, r, ix, iy);
+    rounded_outline(x - spread, y - spread, w + spread * 2, h + spread * 2, r + spread, ox, oy);
+    tiny3d_SetPolygon(TINY3D_QUADS);
+    for (i = 0; i < count; i++) {
+        int j = (i + 1) % count;
+
+        vtx(ix[i], iy[i], inner);
+        vtx(ox[i], oy[i], outer);
+        vtx(ox[j], oy[j], outer);
+        vtx(ix[j], iy[j], inner);
+    }
+    tiny3d_End();
+}
+
+static void thick_line(float x1, float y1, float x2, float y2, float width, u32 color)
+{
+    float dx = x2 - x1, dy = y2 - y1, len = sqrtf(dx * dx + dy * dy);
+    float px, py;
+
+    if (len <= 0.0f)
+        return;
+    px = -dy / len * width * 0.5f;
+    py = dx / len * width * 0.5f;
+    tiny3d_SetPolygon(TINY3D_QUADS);
+    vtx(x1 + px, y1 + py, color);
+    vtx(x2 + px, y2 + py, color);
+    vtx(x2 - px, y2 - py, color);
+    vtx(x1 - px, y1 - py, color);
+    tiny3d_End();
+}
+
+static void ring(float cx, float cy, float radius, float thickness, u32 color)
+{
     int i;
 
-    switch (kind) {
+    tiny3d_SetPolygon(TINY3D_QUADS);
+    for (i = 0; i < 28; i++) {
+        float a0 = 2 * PI_F * i / 28, a1 = 2 * PI_F * (i + 1) / 28;
+
+        vtx(cx + cosf(a0) * radius, cy + sinf(a0) * radius, color);
+        vtx(cx + cosf(a1) * radius, cy + sinf(a1) * radius, color);
+        vtx(cx + cosf(a1) * (radius - thickness), cy + sinf(a1) * (radius - thickness), color);
+        vtx(cx + cosf(a0) * (radius - thickness), cy + sinf(a0) * (radius - thickness), color);
+    }
+    tiny3d_End();
+}
+
+/* Glossy black DualShock-style key: drop shadow, rim, face and a highlight on top. */
+static void button_body(float x, float y, float w, float h, float r)
+{
+    rounded_rect(x, y + h * 0.16f, w, h, r, 0x00000070);
+    round_band(x, y + h * 0.16f, w, h, r, 2.2f, 0x00000070, 0x00000000);
+    round_grad(x, y, w, h, r, 0x7a808cff, 0x24272eff);
+    round_grad(x + 0.9f, y + 0.9f, w - 1.8f, h - 1.8f, r - 0.9f, 0x343841ff, 0x101216ff);
+    round_grad(x + w * 0.18f, y + 1.4f, w * 0.64f, h * 0.38f, h * 0.19f, 0xffffff40, 0xffffff00);
+}
+
+static void face_button(float cx, float cy, float r, int icon)
+{
+    float s = r * 0.5f, lw = r * 0.19f;
+    int i;
+
+    button_body(cx - r, cy - r, r * 2, r * 2, r);
+    switch (icon) {
     case ICON_CROSS:
-        tiny3d_SetPolygon(TINY3D_LINES);
-        tiny3d_VertexPos(cx - r, cy - r, 0);
-        tiny3d_VertexColor(C_CROSS);
-        tiny3d_VertexPos(cx + r, cy + r, 0);
-        tiny3d_VertexPos(cx + r, cy - r, 0);
-        tiny3d_VertexPos(cx - r, cy + r, 0);
-        tiny3d_End();
+        thick_line(cx - s, cy - s, cx + s, cy + s, lw, C_CROSS);
+        thick_line(cx + s, cy - s, cx - s, cy + s, lw, C_CROSS);
         break;
     case ICON_CIRCLE:
-        tiny3d_SetPolygon(TINY3D_LINE_LOOP);
-        for (i = 0; i < 20; i++) {
-            float a = i * 6.2831853f / 20;
+        ring(cx, cy, s * 1.05f, lw, C_CIRCLE);
+        break;
+    case ICON_TRIANGLE: {
+        float radius = s * 1.32f, k = 1.0f - 2.0f * lw / radius, oy = cy + radius * 0.14f;
+        float ax[3], ay[3];
 
-            tiny3d_VertexPos(cx + cosf(a) * r, cy + sinf(a) * r, 0);
-            if (i == 0)
-                tiny3d_VertexColor(C_CIRCLE);
+        for (i = 0; i < 3; i++) {
+            float a = -PI_F * 0.5f + i * 2 * PI_F / 3;
+
+            ax[i] = cx + cosf(a) * radius;
+            ay[i] = oy + sinf(a) * radius;
+        }
+        tiny3d_SetPolygon(TINY3D_QUADS);
+        for (i = 0; i < 3; i++) {
+            int j = (i + 1) % 3;
+
+            vtx(ax[i], ay[i], C_TRIANGLE);
+            vtx(ax[j], ay[j], C_TRIANGLE);
+            vtx(cx + (ax[j] - cx) * k, oy + (ay[j] - oy) * k, C_TRIANGLE);
+            vtx(cx + (ax[i] - cx) * k, oy + (ay[i] - oy) * k, C_TRIANGLE);
         }
         tiny3d_End();
         break;
-    case ICON_TRIANGLE:
-        tiny3d_SetPolygon(TINY3D_LINE_LOOP);
-        tiny3d_VertexPos(cx, cy - r, 0);
-        tiny3d_VertexColor(C_TRIANGLE);
-        tiny3d_VertexPos(cx + r, cy + r * 0.8f, 0);
-        tiny3d_VertexPos(cx - r, cy + r * 0.8f, 0);
-        tiny3d_End();
+    }
+    case ICON_SQUARE: {
+        float a = s * 0.92f;
+
+        rect(cx - a, cy - a, a * 2, lw, C_SQUARE);
+        rect(cx - a, cy + a - lw, a * 2, lw, C_SQUARE);
+        rect(cx - a, cy - a + lw, lw, a * 2 - lw * 2, C_SQUARE);
+        rect(cx + a - lw, cy - a + lw, lw, a * 2 - lw * 2, C_SQUARE);
         break;
     }
+    }
+}
+
+#define CAP_TEXT 10
+
+static float cap_width(const char *label)
+{
+    float w = text_width(label, CAP_TEXT) + 12;
+
+    return w < 24 ? 24 : w;
+}
+
+/* Small shoulder-button cap with its name on it, e.g. L1. */
+static float key_cap(float x, float cy, const char *label)
+{
+    float w = cap_width(label), h = 16;
+
+    button_body(x, cy - h / 2, w, h, 4);
+    text(x + (w - text_width(label, CAP_TEXT)) / 2, cy - CAP_TEXT / 2.0f - 1, CAP_TEXT, 0xe8edf5ff, label);
+    return w;
 }
 
 typedef struct {
     int icon;
-    const char *key;    /* drawn before the label when there's no icon, e.g. "L1/R1" */
     const char *label;
 } hint_item;
 
-#define HINT_SIZE 15
-#define HINT_GAP  26
+#define HINT_SIZE   15
+#define HINT_GAP    24
+#define HINT_RADIUS 10
+
+static float glyph_width(int icon)
+{
+    if (icon == ICON_SHOULDERS)
+        return cap_width("L1") + 3 + cap_width("R1");
+    return HINT_RADIUS * 2;
+}
 
 static float hint_width(const hint_item *h)
 {
-    float w = text_width(h->label, HINT_SIZE);
-
-    if (h->icon != ICON_NONE)
-        w += 21;
-    if (h->key)
-        w += text_width(h->key, HINT_SIZE) + 7;
-    return w;
+    return glyph_width(h->icon) + 8 + text_width(h->label, HINT_SIZE);
 }
 
-/* A centered row of button hints, like the mockup's bottom bar. */
+/* A centered row of controller hints with DualShock-style keys, as in AkTeknoloji Store V2. */
 static void draw_hint_row(const hint_item *items, int n, float y)
 {
-    float total = 0, x;
+    float total = 0, x, cy = y + HINT_SIZE / 2.0f + 1;
     int i;
 
     for (i = 0; i < n; i++)
@@ -570,16 +720,15 @@ static void draw_hint_row(const hint_item *items, int n, float y)
 
     x = (SCREEN_W - total) / 2;
     for (i = 0; i < n; i++) {
-        float start = x;
+        if (items[i].icon == ICON_SHOULDERS) {
+            float w = key_cap(x, cy, "L1");
 
-        if (items[i].icon != ICON_NONE) {
-            button_icon(x + 7, y + 8, items[i].icon);
-            x += 21;
+            key_cap(x + w + 3, cy, "R1");
+        } else {
+            face_button(x + HINT_RADIUS, cy, HINT_RADIUS, items[i].icon);
         }
-        if (items[i].key)
-            x = text(x, y, HINT_SIZE, C_FAINT, items[i].key) + 7;
-        text(x, y, HINT_SIZE, C_DIM, items[i].label);
-        x = start + hint_width(&items[i]) + HINT_GAP;
+        text(x + glyph_width(items[i].icon) + 8, y, HINT_SIZE, C_DIM, items[i].label);
+        x += hint_width(&items[i]) + HINT_GAP;
     }
 }
 
@@ -819,11 +968,11 @@ void gfx_draw_library(const library_t *lib, float pos, int sel, int show_ui)
 
     rect(40, ROW_RULE, SCREEN_W - 80, 1, C_RULE);
     if (lib->count > 0)
-        hints[n++] = (hint_item){ ICON_CROSS, NULL, lang_str(STR_LAUNCH) };
-    hints[n++] = (hint_item){ ICON_CIRCLE, NULL, lang_str(STR_EXIT) };
-    hints[n++] = (hint_item){ ICON_TRIANGLE, NULL, lang_str(STR_RESCAN) };
+        hints[n++] = (hint_item){ ICON_CROSS, lang_str(STR_LAUNCH) };
+    hints[n++] = (hint_item){ ICON_CIRCLE, lang_str(STR_EXIT) };
+    hints[n++] = (hint_item){ ICON_TRIANGLE, lang_str(STR_RESCAN) };
     if (lib->count > 0)
-        hints[n++] = (hint_item){ ICON_NONE, "L1/R1", lang_str(STR_FAST_SCROLL) };
+        hints[n++] = (hint_item){ ICON_SHOULDERS, lang_str(STR_FAST_SCROLL) };
     draw_hint_row(hints, n, ROW_HINTS);
 }
 
@@ -864,10 +1013,10 @@ void gfx_draw_overlay(const char *title, const char *detail, float progress, int
         rounded_rect(224, 278, 400, 8, 4, C_TRACK);
         if (progress > 0.02f)
             rounded_rect(224, 278, 400 * progress, 8, 4, C_ACCENT);
-        h = (hint_item){ ICON_CIRCLE, NULL, lang_str(STR_CANCEL) };
+        h = (hint_item){ ICON_CIRCLE, lang_str(STR_CANCEL) };
         draw_hint_row(&h, 1, 306);
     } else if (show_continue) {
-        h = (hint_item){ ICON_CROSS, NULL, lang_str(STR_CONTINUE) };
+        h = (hint_item){ ICON_CROSS, lang_str(STR_CONTINUE) };
         draw_hint_row(&h, 1, 286);
     }
 }
