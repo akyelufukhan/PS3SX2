@@ -22,3 +22,10 @@ tiny3d-src/
 PS2ISO/
 
 .DS_Store
+
+# Third-party sources built by CI
+mbedtls-2.28.10/
+mbedtls-2.28.10.patch
+curl-7.64.1/
+curl-7.64.1.tar.gz
+curl-ps3-build.sh

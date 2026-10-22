@@ -3,6 +3,7 @@
  * Build and run with `make -C tests`; no PS3 toolchain needed.
  */
 #include "canvas.h"
+#include "coverdl.h"
 #include "coverflow.h"
 #include "covers.h"
 #include "iso9660.h"
@@ -699,6 +700,8 @@ static void test_lang(void)
             CHECK(strchr(out, '?') == NULL);
         }
         CHECK(strstr(lang_str(STR_GAME_COUNT), "%d") != NULL);
+        CHECK(strstr(lang_str(STR_COVERS_DONE), "%d") != NULL);
+        CHECK(strstr(lang_str(STR_COVERS_MISSING), "%d") != NULL);
     }
     lang_set(LANG_TR);
     CHECK_STR(lang_str(STR_LAUNCH), "Başlat");
@@ -796,6 +799,127 @@ static void test_canvas(void)
     CHECK(px[0] == 0xffffffff && px[1] == 0xff000000 && px[2] == 0xff808080 && px[22] == 0xffffffff);
 }
 
+static const unsigned char jpeg_bytes[] = { 0xFF, 0xD8, 0xFF, 0xE0, 'J', 'F', 'I', 'F' };
+
+/* Fake network: serial in the URL decides the answer. */
+static int fake_fetch_calls;
+
+static int fake_fetch(const char *url, const char *dst, void *user)
+{
+    (void)user;
+    fake_fetch_calls++;
+    if (strstr(url, "DOWN"))
+        return -1;
+    if (strstr(url, "SLUS-99999"))
+        return 1;                                   /* 404 */
+    if (strstr(url, "SLUS-88888")) {
+        write_file(dst, "<html>", 6);               /* captive portal, not a JPEG */
+        return 0;
+    }
+    write_file(dst, jpeg_bytes, sizeof(jpeg_bytes));
+    return 0;
+}
+
+static int cancel_at;
+
+static int fake_cover_progress(int done, int total, const game_t *g, void *user)
+{
+    (void)total;
+    (void)g;
+    (void)user;
+    return cancel_at && done >= cancel_at;
+}
+
+static void test_coverdl(void)
+{
+    char url[256], target[GAME_PATH_MAX], dir[600], path[700];
+    game_t games[6];
+    library_t lib;
+    coverdl_result r;
+    int i;
+
+    CHECK(coverdl_template_ok(COVERDL_DEFAULT_URL));
+    CHECK(!coverdl_template_ok("ftp://example.com/%s.jpg"));
+    CHECK(!coverdl_template_ok("https://example.com/%s/%s.jpg"));
+    CHECK(!coverdl_template_ok("https://example.com/%d.jpg"));
+    CHECK(!coverdl_template_ok("https://example.com/cover.jpg"));
+    CHECK(!coverdl_template_ok("https://example.com/%%s.jpg"));
+
+    CHECK(coverdl_url(COVERDL_DEFAULT_URL, "SLES-54203", url, sizeof(url)) == 0);
+    CHECK_STR(url, "https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/SLES-54203.jpg");
+    CHECK(coverdl_url("http://h/%s", "SLES-54203", url, 12) == -1);
+    CHECK(coverdl_url(COVERDL_DEFAULT_URL, "", url, sizeof(url)) == -1);
+
+    CHECK(coverdl_is_jpeg(jpeg_bytes, sizeof(jpeg_bytes)));
+    CHECK(!coverdl_is_jpeg((const unsigned char *)"<html>", 6));
+    CHECK(!coverdl_is_jpeg(jpeg_bytes, 2));
+
+    path_join(dir, sizeof(dir), tmp_root, "coverdl");
+    mkdir(dir, 0777);
+    memset(games, 0, sizeof(games));
+    for (i = 0; i < 6; i++)
+        games[i].format = GAME_FMT_ISO;
+    path_join(games[0].path, GAME_PATH_MAX, dir, "PES.iso");       strcpy(games[0].serial, "SLES-54203");
+    path_join(games[1].path, GAME_PATH_MAX, dir, "PES copy.iso");  strcpy(games[1].serial, "SLES-54203");
+    path_join(games[2].path, GAME_PATH_MAX, dir, "GTA.iso");       strcpy(games[2].serial, "SLUS-20946");
+    path_join(games[3].path, GAME_PATH_MAX, dir, "Ico.BIN.ENC");   /* no serial */
+    path_join(games[4].path, GAME_PATH_MAX, dir, "Rare.iso");      strcpy(games[4].serial, "SLUS-99999");
+    path_join(games[5].path, GAME_PATH_MAX, dir, "Portal.iso");    strcpy(games[5].serial, "SLUS-88888");
+    lib.games = games;
+    lib.count = 6;
+    lib.capacity = 6;
+
+    CHECK(coverdl_target(&games[0], target, sizeof(target)) == 0);
+    snprintf(path, sizeof(path), "%s/covers/SLES-54203.jpg", dir);
+    CHECK_STR(target, path);
+    CHECK(coverdl_target(&games[3], target, sizeof(target)) == -1);
+
+    /* GTA already has a cover next to the ISO. */
+    path_join(path, sizeof(path), dir, "GTA.png");
+    write_file(path, "png", 3);
+    CHECK(coverdl_needs_cover(&games[0]));
+    CHECK(!coverdl_needs_cover(&games[2]));
+    CHECK(!coverdl_needs_cover(&games[3]));
+
+    fake_fetch_calls = 0;
+    cancel_at = 0;
+    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, fake_cover_progress, NULL, &r);
+    CHECK(r.total == 3);  /* PES once, Rare, Portal */
+    CHECK(r.downloaded == 1 && r.missing == 1 && r.failed == 1 && !r.cancelled);
+    CHECK(fake_fetch_calls == 3);
+    snprintf(path, sizeof(path), "%s/covers/SLES-54203.jpg", dir);
+    CHECK(file_equals(path, jpeg_bytes, sizeof(jpeg_bytes)));
+    snprintf(path, sizeof(path), "%s/covers/SLUS-88888.jpg", dir);
+    CHECK(!exists(path));
+    snprintf(path, sizeof(path), "%s/covers/SLUS-88888.jpg.part", dir);
+    CHECK(!exists(path));
+    CHECK(!coverdl_needs_cover(&games[1]));  /* the copy shares the downloaded cover */
+
+    /* Nothing left that can be fetched except the two the archive lacks. */
+    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, NULL, NULL, &r);
+    CHECK(r.total == 2 && r.downloaded == 0);
+
+    /* Cancelling stops before the next game. */
+    cancel_at = 1;
+    fake_fetch_calls = 0;
+    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, fake_cover_progress, NULL, &r);
+    CHECK(r.cancelled && fake_fetch_calls == 1);
+    cancel_at = 0;
+
+    /* No network: gives up after three errors in a row. */
+    for (i = 0; i < 6; i++)
+        snprintf(games[i].serial, sizeof(games[i].serial), "DOWN-%05d", i);
+    fake_fetch_calls = 0;
+    coverdl_run(&lib, "https://example.com/%s.jpg", fake_fetch, NULL, NULL, &r);
+    CHECK(r.failed == 3 && fake_fetch_calls == 3);
+
+    /* A broken template fails every game without touching the network. */
+    strcpy(games[0].serial, "SLES-54204");
+    fake_fetch_calls = 0;
+    coverdl_run(&lib, "https://example.com/cover.jpg", fake_fetch, NULL, NULL, &r);
+    CHECK(fake_fetch_calls == 0 && r.downloaded == 0);
+}
+
 static void test_covers(void)
 {
     char out[COVER_MAX_CANDIDATES][GAME_PATH_MAX];
@@ -844,6 +968,7 @@ int main(void)
     test_lang();
     test_coverflow();
     test_covers();
+    test_coverdl();
 
     remove_tree(tmp_root);
     printf("%d checks, %d failed\n", checks, failures);

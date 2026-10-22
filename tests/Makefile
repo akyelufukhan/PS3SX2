@@ -7,7 +7,7 @@ CFLAGS  ?= -std=gnu99 -O1 -g -Wall -Wextra -Werror $(SAN)
 LDFLAGS ?= $(SAN)
 
 SRC     := ../source
-SOURCES := $(SRC)/canvas.c $(SRC)/coverflow.c $(SRC)/covers.c $(SRC)/iso9660.c $(SRC)/lang.c \
+SOURCES := $(SRC)/canvas.c $(SRC)/coverdl.c $(SRC)/coverflow.c $(SRC)/covers.c $(SRC)/iso9660.c $(SRC)/lang.c \
            $(SRC)/launcher.c $(SRC)/library.c $(SRC)/serial.c $(SRC)/text.c tests.c
 
 .PHONY: all run clean

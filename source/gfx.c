@@ -947,7 +947,7 @@ static void draw_details(const library_t *lib, int sel)
 
 void gfx_draw_library(const library_t *lib, float pos, int sel, int show_ui)
 {
-    hint_item hints[4];
+    hint_item hints[5];
     int n = 0;
 
     if (lib->count > 0)
@@ -971,6 +971,8 @@ void gfx_draw_library(const library_t *lib, float pos, int sel, int show_ui)
         hints[n++] = (hint_item){ ICON_CROSS, lang_str(STR_LAUNCH) };
     hints[n++] = (hint_item){ ICON_CIRCLE, lang_str(STR_EXIT) };
     hints[n++] = (hint_item){ ICON_TRIANGLE, lang_str(STR_RESCAN) };
+    if (lib->count > 0)
+        hints[n++] = (hint_item){ ICON_SQUARE, lang_str(STR_COVERS) };
     if (lib->count > 0)
         hints[n++] = (hint_item){ ICON_SHOULDERS, lang_str(STR_FAST_SCROLL) };
     draw_hint_row(hints, n, ROW_HINTS);

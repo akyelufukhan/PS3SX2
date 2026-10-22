@@ -31,6 +31,7 @@ The name reads "PS3 Slim × PS2": S for Slim, X for the ✕ button that starts a
 - English and Turkish UI, picked from the console's system language
 - On CFW with Cobra, mounts `.iso` games as a PS2 disc by itself: no webMAN MOD or other
   tools needed, just this one package
+- □ downloads missing covers by serial
 - Ships the community's `ps2_netemu` fixes for about 1,400 games and applies the right one
   automatically when an `.iso` starts
 - Loads `.BIN.ENC` games into the PS2 Classics Placeholder (HEN and CFW); you then start
@@ -94,6 +95,18 @@ PS3SX2 looks for a cover in this order:
 A game without a cover gets a generated one: a colored case with its title, region and
 serial. Images are shrunk to 256×360 on load.
 
+**Downloading covers:** press □ and PS3SX2 fetches the missing ones over the internet, by
+serial, from the [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers) archive that
+PCSX2 users rely on. They're saved as `covers/<SERIAL>.jpg` next to the games, so they show
+up offline from then on. Games the archive doesn't have keep their generated cover.
+
+- Box art is copyrighted, so neither this repository nor the package contains any; the
+  console downloads it when you ask.
+- To use another archive, put its URL in `/dev_hdd0/PS2ISO/covers_url.txt` with `%s` where
+  the serial goes, e.g. `https://example.com/ps2/%s.jpg`.
+- Connections are encrypted and verified against Mozilla's list of certificate authorities,
+  so the console's date and time need to be right.
+
 ### File names
 
 A tidy title is built from the file name. Serial tags are removed and `_` becomes a
@@ -116,7 +129,8 @@ if you want covers by serial.
 | L1 / R1 | Jump 5 games |
 | ✕ | Start the selected game |
 | △ | Rescan the folders |
-| ○ | Exit, or cancel a copy |
+| □ | Download missing covers |
+| ○ | Exit, or cancel a copy or download |
 
 ## Building
 
@@ -152,11 +166,12 @@ That produces `ps3sx2.pkg`. Every push to GitHub also builds it: open the
 | `source/cobra.c` | Cobra syscalls that mount a PS2 ISO (adapted from IRISMAN) |
 | `source/coverflow.c` | Carousel layout and animation math |
 | `source/canvas.c` | Small software painter for generated covers |
+| `source/coverdl.c`, `source/net.c` | Missing-cover downloads; HTTPS through curl and mbedTLS |
 | `source/covers.c` | Where to look for each game's cover |
 | `source/lang.c`, `source/text.c` | English and Turkish strings, UTF-8 to font encoding |
-| `tests/` | Host unit tests for everything above except `main.c`, `gfx.c` and `cobra.c` |
+| `tests/` | Host unit tests for everything above except `main.c`, `gfx.c`, `cobra.c` and `net.c` |
 
-Only `main.c`, `gfx.c` and `cobra.c` touch PS3 APIs. Keep new logic in a separate module
+Only `main.c`, `gfx.c`, `cobra.c` and `net.c` touch PS3 APIs. Keep new logic in a separate module
 so it can be tested with `make test`.
 
 ## Roadmap
@@ -202,5 +217,9 @@ and none should be added to it. Use games from discs you own.
   whose Cobra code `source/cobra.c` is adapted from
 - Everyone who wrote and collected the `ps2_netemu` custom configs shipped in
   `pkgfiles/USRDIR/ps2config`
-- [Apollo Save Tool](https://github.com/bucanero/apollo-ps3) by bucanero, whose CI setup this
-  project's CI is based on
+- [Apollo Save Tool](https://github.com/bucanero/apollo-ps3) by bucanero, whose CI setup and
+  network code this project's are based on
+- [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers), the cover archive downloads
+  come from
+- Mozilla's root certificates as packaged by [curl](https://curl.se/docs/caextract.html)
+  (`pkgfiles/USRDIR/cacert.pem`, MPL 2.0)

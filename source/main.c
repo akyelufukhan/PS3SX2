@@ -1,6 +1,7 @@
 /*
  * PS3SX2 - a cover-flow launcher for PS2 games on PS3 Slim and Super Slim.
  */
+#include <stdio.h>
 #include <string.h>
 
 #include <io/pad.h>
@@ -8,16 +9,22 @@
 #include <sysutil/sysutil.h>
 
 #include "cobra.h"
+#include "coverdl.h"
 #include "coverflow.h"
 #include "gfx.h"
 #include "lang.h"
 #include "launcher.h"
 #include "library.h"
+#include "net.h"
 
 #define PADS          7
 #define REPEAT_DELAY  18  /* frames before a held direction starts repeating */
 #define REPEAT_RATE   5   /* frames between repeats */
 #define FAST_STEP     5   /* covers skipped by L1 / R1 */
+
+#define APP_USRDIR    "/dev_hdd0/game/PS3SX2001/USRDIR"
+#define CA_BUNDLE     APP_USRDIR "/cacert.pem"
+#define COVER_URL_TXT "/dev_hdd0/PS2ISO/covers_url.txt"  /* optional: another cover archive */
 
 enum {
     IN_LEFT     = 1 << 0,
@@ -27,6 +34,7 @@ enum {
     IN_CROSS    = 1 << 4,
     IN_CIRCLE   = 1 << 5,
     IN_TRIANGLE = 1 << 6,
+    IN_SQUARE   = 1 << 7,
 };
 
 typedef struct {
@@ -37,8 +45,8 @@ typedef struct {
 
 typedef struct {
     int active;
-    str_id title;
-    str_id hint;
+    char title[160];
+    char hint[192];
     int exit_on_close;
 } message;
 
@@ -82,6 +90,7 @@ static u32 poll_pads(void)
             if (data.BTN_CROSS)    b |= IN_CROSS;
             if (data.BTN_CIRCLE)   b |= IN_CIRCLE;
             if (data.BTN_TRIANGLE) b |= IN_TRIANGLE;
+            if (data.BTN_SQUARE)   b |= IN_SQUARE;
             pad_buttons[i] = b;
         }
         all |= pad_buttons[i];
@@ -105,12 +114,17 @@ static void update_input(void)
     input.held = now;
 }
 
-static void show_message(str_id title, str_id hint, int exit_on_close)
+static void show_message_text(const char *title, const char *hint, int exit_on_close)
 {
     msg.active = 1;
-    msg.title = title;
-    msg.hint = hint;
+    snprintf(msg.title, sizeof(msg.title), "%s", title);
+    snprintf(msg.hint, sizeof(msg.hint), "%s", hint);
     msg.exit_on_close = exit_on_close;
+}
+
+static void show_message(str_id title, str_id hint, int exit_on_close)
+{
+    show_message_text(lang_str(title), lang_str(hint), exit_on_close);
 }
 
 static void scan_library(void)
@@ -124,6 +138,15 @@ static void scan_library(void)
     pos = (float)sel;
 }
 
+/* Draws one frame with a panel over the carousel, for work that blocks the main loop. */
+static void busy_frame(const char *title, const char *detail, float progress)
+{
+    gfx_frame_begin();
+    gfx_draw_library(&lib, pos, sel, 0);
+    gfx_draw_overlay(title, detail, progress, 0);
+    gfx_frame_end();
+}
+
 /* Keeps the screen alive while a game is copied into the placeholder. */
 static int on_copy_progress(unsigned long long done, unsigned long long total, void *user)
 {
@@ -132,10 +155,7 @@ static int on_copy_progress(unsigned long long done, unsigned long long total, v
     sysUtilCheckCallback();
     update_input();
 
-    gfx_frame_begin();
-    gfx_draw_library(&lib, pos, sel, 0);
-    gfx_draw_overlay(lang_str(STR_COPYING), g->title, total ? (float)((double)done / total) : 0.0f, 0);
-    gfx_frame_end();
+    busy_frame(lang_str(STR_COPYING), g->title, total ? (float)((double)done / total) : 0.0f);
 
     return !running || (input.pressed & IN_CIRCLE);
 }
@@ -146,10 +166,7 @@ static void launch_selected(void)
 
     /* Mounting blocks for a few seconds while the XMB catches up; say so first. */
     if (g->format == GAME_FMT_ISO) {
-        gfx_frame_begin();
-        gfx_draw_library(&lib, pos, sel, 0);
-        gfx_draw_overlay(lang_str(STR_MOUNTING), g->title, -1.0f, 0);
-        gfx_frame_end();
+        busy_frame(lang_str(STR_MOUNTING), g->title, -1.0f);
     }
 
     switch (launcher_start(g, on_copy_progress, (void *)g)) {
@@ -178,6 +195,72 @@ static void launch_selected(void)
     default:
         show_message(STR_ERR_COPY, STR_COUNT, 0);
         break;
+    }
+}
+
+static int on_cover_progress(int done, int total, const game_t *g, void *user)
+{
+    char detail[GAME_TITLE_MAX + 32];
+
+    (void)user;
+    sysUtilCheckCallback();
+    update_input();
+    snprintf(detail, sizeof(detail), "%d / %d  ·  %s", done + 1, total, g ? g->title : "");
+    busy_frame(lang_str(STR_DOWNLOADING_COVERS), detail, total ? (float)done / total : 0.0f);
+    return !running || (input.pressed & IN_CIRCLE);
+}
+
+/* A cover archive URL from PS2ISO/covers_url.txt, or the default one. */
+static void cover_url_template(char *out, size_t size)
+{
+    FILE *fp = fopen(COVER_URL_TXT, "r");
+
+    snprintf(out, size, "%s", COVERDL_DEFAULT_URL);
+    if (fp) {
+        char line[256];
+
+        if (fgets(line, sizeof(line), fp)) {
+            line[strcspn(line, "\r\n")] = '\0';
+            if (coverdl_template_ok(line))
+                snprintf(out, size, "%s", line);
+        }
+        fclose(fp);
+    }
+}
+
+static void download_covers(void)
+{
+    char tmpl[256], title[160], hint[192];
+    coverdl_result r;
+    int i, needed = 0;
+
+    for (i = 0; i < lib.count; i++)
+        needed += coverdl_needs_cover(&lib.games[i]);
+    if (!needed) {
+        show_message(STR_COVERS_NONE, STR_COUNT, 0);
+        return;
+    }
+
+    busy_frame(lang_str(STR_DOWNLOADING_COVERS), "", -1.0f);
+    if (net_start(CA_BUNDLE) != 0 || !net_connected()) {
+        show_message(STR_ERR_NO_NETWORK, STR_COUNT, 0);
+        return;
+    }
+
+    cover_url_template(tmpl, sizeof(tmpl));
+    coverdl_run(&lib, tmpl, net_fetch, on_cover_progress, NULL, &r);
+    gfx_reset_covers();
+
+    if (r.cancelled) {
+        show_message(STR_ERR_CANCELLED, STR_COUNT, 0);
+    } else if (r.downloaded == 0 && r.failed > 0) {
+        show_message(STR_ERR_COVERS_FAILED, STR_ERR_COVERS_FAILED_HINT, 0);
+    } else {
+        snprintf(title, sizeof(title), lang_str(STR_COVERS_DONE), r.downloaded);
+        hint[0] = '\0';
+        if (r.missing > 0)
+            snprintf(hint, sizeof(hint), lang_str(STR_COVERS_MISSING), r.missing);
+        show_message_text(title, hint, 0);
     }
 }
 
@@ -231,6 +314,8 @@ static void handle_input(void)
 
     if (input.pressed & IN_CROSS)
         launch_selected();
+    else if (input.pressed & IN_SQUARE)
+        download_covers();
 }
 
 int main(int argc, const char *argv[])
@@ -272,11 +357,12 @@ int main(int argc, const char *argv[])
         gfx_frame_begin();
         gfx_draw_library(&lib, pos, sel, !msg.active);
         if (msg.active)
-            gfx_draw_overlay(lang_str(msg.title), lang_str(msg.hint), -1.0f, 1);
+            gfx_draw_overlay(msg.title, msg.hint, -1.0f, 1);
         gfx_frame_end();
     }
 
     library_free(&lib);
+    net_stop();
     gfx_shutdown();
     sysUtilUnregisterCallback(SYSUTIL_EVENT_SLOT0);
     sysModuleUnload(SYSMODULE_JPGDEC);

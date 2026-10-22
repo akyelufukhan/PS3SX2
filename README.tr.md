@@ -31,6 +31,7 @@ PS2'den geliyor.
 - Türkçe ve İngilizce arayüz, konsolun sistem diline göre otomatik seçilir
 - Cobra'lı CFW'de `.iso` oyunlarını kendisi PS2 diski olarak takar: webMAN MOD ya da
   başka bir araç gerekmez, tek paket yeterli
+- □ tuşuyla eksik kapakları seri koda göre indirir
 - Topluluğun yaklaşık 1.400 oyun için hazırladığı `ps2_netemu` düzeltmelerini içinde taşır
   ve bir `.iso` başlarken doğru olanı otomatik uygular
 - `.BIN.ENC` oyunları PS2 Classics Placeholder'a yükler (HEN ve CFW'de), sonra
@@ -95,6 +96,18 @@ PS3SX2 kapağı şu sırayla arar:
 Kapağı olmayan oyuna, adı, bölgesi ve seri koduyla renkli bir kapak üretilir. Resimler
 yüklenirken 256×360'a küçültülür.
 
+**Kapak indirme:** □ tuşuna basınca PS3SX2 eksik kapakları seri koda göre internetten,
+PCSX2 kullanıcılarının kullandığı [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers)
+arşivinden indirir. Kapaklar oyunların yanına `covers/<SERİ KOD>.jpg` olarak kaydedilir ve
+o andan sonra internet olmadan da görünür. Arşivde olmayan oyunlar üretilen kapakla kalır.
+
+- Kutu tasarımları telifli olduğu için ne bu repoda ne de pakette kapak resmi var; konsol
+  onları sen istediğinde indiriyor.
+- Başka bir arşiv kullanmak için adresini, seri kodun geleceği yere `%s` koyarak
+  `/dev_hdd0/PS2ISO/covers_url.txt` dosyasına yaz, ör. `https://example.com/ps2/%s.jpg`.
+- Bağlantılar şifreli ve Mozilla'nın sertifika listesine göre doğrulanıyor; bu yüzden
+  konsolun tarih ve saatinin doğru olması gerekiyor.
+
 ### Dosya adları
 
 Görünen başlık dosya adından üretilir. Seri kod etiketleri silinir, `_` boşluğa
@@ -117,7 +130,8 @@ koda göre bulunmasını istiyorsan kodu dosya adında bırak.
 | L1 / R1 | 5 oyun atla |
 | ✕ | Seçili oyunu başlat |
 | △ | Klasörleri yeniden tara |
-| ○ | Çıkış ya da kopyalamayı iptal |
+| □ | Eksik kapakları indir |
+| ○ | Çıkış ya da kopyalamayı veya indirmeyi iptal |
 
 ## Derleme
 
@@ -153,11 +167,12 @@ sekmesinden bir çalıştırmayı açıp `ps3sx2-…` çıktısını indirebilir
 | `source/cobra.c` | PS2 ISO takan Cobra sistem çağrıları (IRISMAN'dan uyarlandı) |
 | `source/coverflow.c` | Kapak rafı yerleşimi ve animasyon hesapları |
 | `source/canvas.c` | Üretilen kapaklar için küçük yazılımsal çizim modülü |
+| `source/coverdl.c`, `source/net.c` | Eksik kapak indirme; curl ve mbedTLS ile HTTPS |
 | `source/covers.c` | Her oyunun kapağının aranacağı yerler |
 | `source/lang.c`, `source/text.c` | Türkçe ve İngilizce metinler, UTF-8'den font kodlamasına çeviri |
-| `tests/` | `main.c`, `gfx.c` ve `cobra.c` dışındaki her şey için birim testleri |
+| `tests/` | `main.c`, `gfx.c`, `cobra.c` ve `net.c` dışındaki her şey için birim testleri |
 
-PS3 API'lerine yalnızca `main.c`, `gfx.c` ve `cobra.c` dokunur. Yeni mantığı ayrı bir modüle koy
+PS3 API'lerine yalnızca `main.c`, `gfx.c`, `cobra.c` ve `net.c` dokunur. Yeni mantığı ayrı bir modüle koy
 ki `make test` ile test edilebilsin.
 
 ## Yol haritası
@@ -202,5 +217,8 @@ eklenmemelidir. Sahip olduğun disklerdeki oyunları kullan.
 - `source/cobra.c`'deki Cobra kodunun uyarlandığı, aldostools ve katkıcılarının
   [IRISMAN](https://github.com/aldostools/IRISMAN)'ı (GPL-3.0)
 - `pkgfiles/USRDIR/ps2config` içindeki `ps2_netemu` özel CONFIG'lerini yazan ve derleyen herkes
-- Bu projenin CI kurulumuna temel olan bucanero'nun
+- Bu projenin CI kurulumuna ve ağ koduna temel olan bucanero'nun
   [Apollo Save Tool](https://github.com/bucanero/apollo-ps3)'u
+- Kapakların indirildiği [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers) arşivi
+- [curl](https://curl.se/docs/caextract.html) projesinin derlediği Mozilla kök sertifikaları
+  (`pkgfiles/USRDIR/cacert.pem`, MPL 2.0)

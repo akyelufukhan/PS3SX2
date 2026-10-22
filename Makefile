@@ -38,9 +38,10 @@ DATA		:=	data
 INCLUDES	:=	include
 
 #---------------------------------------------------------------------------------
-# libfont3d comes with Tiny3D; freetype comes from ps3libraries.
+# libfont3d comes with Tiny3D; freetype, curl and mbedTLS from ps3libraries.
 #---------------------------------------------------------------------------------
-LIBS		:=	-lfont3d -lfreetype -lpng -ltiny3d -lrsx -lz -lsimdmath -lgcm_sys -lio -lsysutil \
+LIBS		:=	-lcurl -lmbedtls -lmbedx509 -lmbedcrypto \
+				-lfont3d -lfreetype -lpng -ltiny3d -lrsx -lz -lsimdmath -lgcm_sys -lio -lnetctl -lnet -lsysutil \
 				-lpngdec -ljpgdec -lrt -llv2 -lsysmodule -lm
 
 #---------------------------------------------------------------------------------
