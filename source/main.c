@@ -144,6 +144,14 @@ static void launch_selected(void)
 {
     const game_t *g = &lib.games[sel];
 
+    /* Mounting blocks for a few seconds while the XMB catches up; say so first. */
+    if (g->format == GAME_FMT_ISO) {
+        gfx_frame_begin();
+        gfx_draw_library(&lib, pos, sel, 0);
+        gfx_draw_overlay(lang_str(STR_MOUNTING), g->title, -1.0f, 0);
+        gfx_frame_end();
+    }
+
     switch (launcher_start(g, on_copy_progress, (void *)g)) {
     case LAUNCH_OK:
         show_message(STR_READY_TITLE, STR_READY_HINT, 1);

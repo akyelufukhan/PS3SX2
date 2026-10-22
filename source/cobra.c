@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <ppu-lv2.h>
@@ -85,26 +86,55 @@ payload_kind cobra_detect(void)
     return PAYLOAD_NONE;
 }
 
+static int bdvd_mounted(void)
+{
+    struct stat st;
+    return stat("/dev_bdvd", &st) == 0;
+}
+
+/* Polls until /dev_bdvd is (or isn't) there, for at most `ms` milliseconds. */
+static int wait_bdvd(int mounted, int ms)
+{
+    int waited;
+
+    for (waited = 0; waited < ms; waited += 50) {
+        if (bdvd_mounted() == mounted)
+            return 1;
+        usleep(50 * 1000);
+    }
+    return bdvd_mounted() == mounted;
+}
+
+/*
+ * The order and waits follow webMAN MOD's do_umount_iso() and PS2 mount: the
+ * XMB handles disc events asynchronously, so each step waits for /dev_bdvd to
+ * change before the next one. Without that, the disc sometimes never showed up.
+ */
 int cobra_mount_ps2_iso(const char *path)
 {
     /* Cobra takes 32-bit pointers; PSL1GHT user memory lives below 4 GB. */
     u32 files[1] = { (u32)(u64)path };
     scsi_track track = { 0, 0x14, 1, 0, 0 };  /* a single data track from LBA 0 */
-    u32 ejected = 0;
+    u32 real = 0, effective = 0;
     s32 ret;
 
-    /* Take out whatever disc is emulated now, and let the XMB see it leave. */
+    /* Eject whatever disc the system sees now, real or emulated, and wait for it to go. */
+    sys8_get_disc_type(&real, &effective, NULL);
+    if (effective) {
+        sys8_fake_storage_event(EVENT_EJECT_1, 0, BDVD_DRIVE);
+        sys8_fake_storage_event(EVENT_EJECT_2, 0, BDVD_DRIVE);
+        wait_bdvd(0, 1000);
+    }
     sys8_umount_discfile();
-    usleep(4000);
-    sys8_get_disc_type(&ejected, NULL, NULL);
-    sys8_fake_storage_event(EVENT_EJECT_1, 0, BDVD_DRIVE);
-    sys8_fake_storage_event(EVENT_EJECT_2, 0, BDVD_DRIVE);
+    usleep(20 * 1000);
 
     ret = sys8_mount_ps2_discfile(1, files, 1, &track);
     if (ret != 0)
         return ret;
+    usleep(2500);
 
-    /* Report the "new" disc so the XMB lists it in the Game column. */
+    /* Report the "new" disc so the XMB lists it in the Game column, and wait until it does. */
     sys8_fake_storage_event(EVENT_INSERT_1, 0, BDVD_DRIVE);
-    return sys8_fake_storage_event(EVENT_INSERT_2, (u64)ejected << 32, BDVD_DRIVE);
+    sys8_fake_storage_event(EVENT_INSERT_2, (u64)real << 32, BDVD_DRIVE);
+    return wait_bdvd(1, 5000) ? 0 : -1;
 }

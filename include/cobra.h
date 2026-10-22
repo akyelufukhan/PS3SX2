@@ -15,8 +15,9 @@ typedef enum {
 payload_kind cobra_detect(void);
 
 /*
- * Unmounts any emulated disc, mounts `path` as a PS2 DVD and tells the system a
- * disc was inserted, so it shows up in the XMB. Returns 0 on success.
+ * Ejects and unmounts any current disc, mounts `path` as a PS2 DVD and tells the
+ * system a disc was inserted. Blocks for up to ~6 seconds and returns 0 only
+ * once /dev_bdvd is back, i.e. the XMB can see the disc.
  */
 int cobra_mount_ps2_iso(const char *path);
 
