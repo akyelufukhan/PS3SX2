@@ -10,10 +10,18 @@
 #define COPY_CHUNK (1024 * 1024)
 
 static const launch_platform *platform;
+static const char *const *config_dirs;
+static int config_dir_count;
 
 void launcher_set_platform(const launch_platform *p)
 {
     platform = p;
+}
+
+void launcher_set_config_dirs(const char *const *dirs, int count)
+{
+    config_dirs = dirs;
+    config_dir_count = count;
 }
 
 static int is_dir(const char *path)
@@ -82,6 +90,26 @@ static int find_config(const char *game_path, char *out, size_t outsize)
     return -1;
 }
 
+int launcher_place_iso_config(const game_t *g)
+{
+    char dst[GAME_PATH_MAX], src[GAME_PATH_MAX], boot[12];
+    int i;
+
+    if (snprintf(dst, sizeof(dst), "%s.CONFIG", g->path) >= (int)sizeof(dst))
+        return 0;
+    if (is_file(dst))
+        return 1;
+    if (serial_boot_name(g->serial, boot) != 0)
+        return 0;
+
+    for (i = 0; i < config_dir_count; i++) {
+        if (snprintf(src, sizeof(src), "%s/%s.CONFIG", config_dirs[i], boot) < (int)sizeof(src) &&
+            is_file(src))
+            return copy_file(src, dst, NULL, NULL) == LAUNCH_OK;
+    }
+    return 0;
+}
+
 launch_result launch_ps2classic(const game_t *g, const char *placeholder_dir,
                                 launch_progress_cb cb, void *user)
 {
@@ -133,6 +161,9 @@ launch_result launch_ps2iso(const game_t *g)
        disc as a PS2 Classic or as a real optical disc. */
     unlink("/dev_hdd0/classic_ps2");
     unlink("/dev_hdd0/tmp/loadoptical");
+
+    /* Before mounting: Cobra picks up <iso>.CONFIG when the disc goes in. */
+    launcher_place_iso_config(g);
 
     return platform->mount_ps2_iso(g->path) == 0 ? LAUNCH_OK_DISC : LAUNCH_ERR_MOUNT;
 }

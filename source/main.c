@@ -193,6 +193,13 @@ static int can_mount_iso(void)
 
 static const launch_platform console = { can_mount_iso, cobra_mount_ps2_iso };
 
+/* Where ps2_netemu CONFIGs for .iso games are looked up, best first. */
+static const char *const config_dirs[] = {
+    "/dev_hdd0/game/PS3SX2001/USRDIR/ps2config",      /* community configs shipped in our pkg */
+    "/dev_hdd0/game/PS2CONFIG/USRDIR/CONFIG/CUSTOM",  /* webMAN MOD's database, if installed */
+    "/dev_hdd0/game/PS2CONFIG/USRDIR/CONFIG/NET",
+};
+
 static void handle_input(void)
 {
     if (msg.active) {
@@ -248,6 +255,7 @@ int main(int argc, const char *argv[])
     gfx_set_utc_offset(tz_minutes + (summer_time ? 60 : 0));
 
     launcher_set_platform(&console);
+    launcher_set_config_dirs(config_dirs, sizeof(config_dirs) / sizeof(config_dirs[0]));
     library_init(&lib);
     scan_library();
 

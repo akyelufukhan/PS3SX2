@@ -31,6 +31,8 @@ The name reads "PS3 Slim × PS2": S for Slim, X for the ✕ button that starts a
 - English and Turkish UI, picked from the console's system language
 - On CFW with Cobra, mounts `.iso` games as a PS2 disc by itself: no webMAN MOD or other
   tools needed, just this one package
+- Ships the community's `ps2_netemu` fixes for about 1,400 games and applies the right one
+  automatically when an `.iso` starts
 - Loads `.BIN.ENC` games into the PS2 Classics Placeholder (HEN and CFW); you then start
   the placeholder from the XMB
 
@@ -38,7 +40,7 @@ The name reads "PS3 Slim × PS2": S for Slim, X for the ✕ button that starts a
 
 | Console | Firmware | `.iso` | `.BIN.ENC` (PS2 Classic) |
 |---|---|---|---|
-| Slim, CFW-capable (e.g. CECH-25xx) | CFW with Cobra | Written, untested | Written, untested |
+| Slim, CFW-capable (e.g. CECH-25xx) | CFW with Cobra | Works (tested on a CECH-2504A) | Written, untested |
 | Slim | HEN | Not possible on HEN | Written, untested |
 | Super Slim (CECH-4xxx) | HEN | Not possible on HEN | Written, untested |
 
@@ -58,12 +60,29 @@ sit on the internal drive or a USB drive.
 ```
 /dev_hdd0/PS2ISO/                       (.BIN.ENC can also go in /dev_usb000/PS2ISO/)
 ├── God of War II.iso
+├── God of War II.iso.CONFIG                 ps2_netemu fixes, added automatically
 ├── Burnout 3 [SLUS-21050].BIN.ENC
 ├── Burnout 3 [SLUS-21050].BIN.ENC.CONFIG    optional ps2_netemu settings
 └── covers/
     ├── SCUS-97481.png
     └── SLUS-21050.jpg
 ```
+
+### Game fixes (CONFIG)
+
+`ps2_netemu` doesn't run every game perfectly: some freeze when you skip an intro video,
+show a black screen, or need pressure-sensitive buttons. The PS3 scene has written fixes for
+about 1,400 games as small CONFIG files, and PS3SX2 carries them in its package. When you
+start an `.iso`, it puts the one matching the game's serial next to the image as
+`<game>.iso.CONFIG`, where Cobra hands it to the emulator.
+
+- A CONFIG you put there yourself is never replaced.
+- If webMAN MOD's CONFIG database is installed, its configs are used for games ours don't cover.
+- The configs come from [webMAN MOD](https://github.com/aldostools/webMAN-MOD/tree/master/_Projects_/updater/PS2CONFIG);
+  [psdevwiki](https://www.psdevwiki.com/ps3/PS2_Custom_Configs) explains what they change.
+
+Example: Pro Evolution Soccer 6 freezes after skipping its intro without the fix and plays
+fine with it.
 
 ### Covers
 
@@ -148,7 +167,7 @@ so it can be tested with `make test`.
 - [ ] Mount `.iso` games from USB drives
 - [ ] Start the placeholder directly instead of going back to the XMB
 - [ ] Split `.iso.0` / `.iso.1` images on FAT32 USB drives
-- [ ] Bundled `ps2_netemu` CONFIG database
+- [x] Bundled `ps2_netemu` CONFIG database (community configs)
 - [ ] Cover reflections, analog stick, settings screen
 - [ ] More languages
 
@@ -181,5 +200,7 @@ and none should be added to it. Use games from discs you own.
   documents how PS2 games are mounted
 - [IRISMAN](https://github.com/aldostools/IRISMAN) by aldostools and contributors (GPL-3.0),
   whose Cobra code `source/cobra.c` is adapted from
+- Everyone who wrote and collected the `ps2_netemu` custom configs shipped in
+  `pkgfiles/USRDIR/ps2config`
 - [Apollo Save Tool](https://github.com/bucanero/apollo-ps3) by bucanero, whose CI setup this
   project's CI is based on

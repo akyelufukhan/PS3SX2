@@ -18,6 +18,8 @@ APPID		:=	PS3SX2001
 CONTENTID	:=	UP0001-$(APPID)_00-0000000000000000
 ICON0		:=	$(CURDIR)/pkgfiles/ICON0.PNG
 SFOXML		:=	$(CURDIR)/sfo.xml
+# Copied into the pkg as is, e.g. USRDIR/ps2config.
+PKGFILES	:=	$(CURDIR)/pkgfiles
 
 ifneq ($(MAKECMDGOALS),test)
 include $(PSL1GHT)/ppu_rules

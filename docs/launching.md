@@ -29,7 +29,7 @@ The code is `launch_ps2classic()` in [`source/launcher.c`](../source/launcher.c)
 Why not raw `.iso` on HEN? HEN doesn't provide the Cobra disc emulation needed to mount
 a PS2 ISO. webMAN MOD refuses for the same reason ("HEN does not support PS2 ISO").
 
-## Route 2: plain `.iso` through Cobra — implemented, untested on a console
+## Route 2: plain `.iso` through Cobra — works (tested on a CECH-2504A)
 
 Works only on **CFW with Cobra**, and needs nothing besides PS3SX2: Cobra ships with the
 CFW and `ps2_netemu` with the firmware. The firmware is shown the ISO as if a PS2 DVD were
@@ -47,11 +47,15 @@ adapted from IRISMAN (`source/cobra.c`, `source/mount_game.h`; GPL-3.0 like PS3S
 3. Delete `/dev_hdd0/classic_ps2` and `/dev_hdd0/tmp/loadoptical`, flags Cobra 8.x leaves
    behind that would make the next disc boot as a PS2 Classic or a real optical disc.
 4. Unmount any emulated disc and fake an eject event on the Blu-ray drive.
-5. Mount the ISO as a PS2 DVD with one data track from LBA 0
+5. If no `<iso>.CONFIG` sits next to the image, copy the `ps2_netemu` CONFIG matching the
+   disc's boot file (`SLES_542.03.CONFIG` for PES 6) there, from the configs bundled in
+   `USRDIR/ps2config` or, failing that, webMAN MOD's database if it's installed. Cobra hands
+   that file to the emulator; on the test console it stopped PES 6 freezing after its intro.
+6. Mount the ISO as a PS2 DVD with one data track from LBA 0
    (`MOUNT_PS2_DISCFILE`, `0x7028`), then fake an insert event.
-6. Tell the user to start the PS2 disc from the XMB, and exit.
+7. Tell the user to start the PS2 disc from the XMB, and exit.
 
-`tests/tests.c` covers steps 1–3 and 5 with a fake console; the syscalls themselves can only
+`tests/tests.c` covers steps 1–3, 5 and 6 with a fake console; the syscalls themselves can only
 be checked on a real CFW console (RPCS3 doesn't emulate Cobra).
 
 ## Ideas for later
@@ -59,5 +63,4 @@ be checked on a real CFW console (RPCS3 doesn't emulate Cobra).
 - Start the placeholder or the mounted disc directly instead of going back to the XMB.
 - Mount `.iso` games from USB drives, either by copying them to the internal drive first or
   through a VSH plugin like IRISMAN does.
-- Ship a `ps2_netemu` CONFIG database keyed by serial, like webMAN MOD's PS2CONFIG.
 - Split images (`.iso.0`, `.iso.1`, …) for FAT32 USB drives.

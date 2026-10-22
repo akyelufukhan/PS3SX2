@@ -79,6 +79,22 @@ int serial_from_filename(const char *name, char out[SERIAL_LEN + 1])
     return -1;
 }
 
+int serial_boot_name(const char *serial, char out[12])
+{
+    char norm[SERIAL_LEN + 1];
+
+    if (!serial || !serial_match(serial, norm))
+        return -1;
+    /* "SLES-54203" -> "SLES_542.03" */
+    memcpy(out, norm, 4);
+    out[4] = '_';
+    memcpy(out + 5, norm + 5, 3);
+    out[8] = '.';
+    memcpy(out + 9, norm + 8, 2);
+    out[11] = '\0';
+    return 0;
+}
+
 const char *serial_region(const char *serial)
 {
     if (!serial || strlen(serial) < 4)

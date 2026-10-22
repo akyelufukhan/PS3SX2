@@ -33,6 +33,20 @@ typedef struct {
 void launcher_set_platform(const launch_platform *platform);
 
 /*
+ * Folders searched, in order, for a ps2_netemu CONFIG named after the disc's
+ * boot file (e.g. SLES_542.03.CONFIG). The array must outlive the launcher.
+ */
+void launcher_set_config_dirs(const char *const *dirs, int count);
+
+/*
+ * Cobra hands ps2_netemu the file <iso>.CONFIG when it sits next to the image.
+ * If there's none yet, copies the first match from the config folders there; a
+ * CONFIG the user put next to the ISO always wins. Returns 1 if the ISO has a
+ * CONFIG afterwards, 0 if not.
+ */
+int launcher_place_iso_config(const game_t *g);
+
+/*
  * PS2 Classics route, works on HEN and CFW: copies the encrypted image into the
  * placeholder (plus its .CONFIG, if one sits next to it). The user then starts
  * "PS2 Classics Placeholder" from the XMB.

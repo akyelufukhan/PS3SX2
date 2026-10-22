@@ -31,6 +31,8 @@ PS2'den geliyor.
 - Türkçe ve İngilizce arayüz, konsolun sistem diline göre otomatik seçilir
 - Cobra'lı CFW'de `.iso` oyunlarını kendisi PS2 diski olarak takar: webMAN MOD ya da
   başka bir araç gerekmez, tek paket yeterli
+- Topluluğun yaklaşık 1.400 oyun için hazırladığı `ps2_netemu` düzeltmelerini içinde taşır
+  ve bir `.iso` başlarken doğru olanı otomatik uygular
 - `.BIN.ENC` oyunları PS2 Classics Placeholder'a yükler (HEN ve CFW'de), sonra
   placeholder'ı XMB'den başlatırsın
 
@@ -38,7 +40,7 @@ PS2'den geliyor.
 
 | Konsol | Yazılım | `.iso` | `.BIN.ENC` (PS2 Classic) |
 |---|---|---|---|
-| Slim, CFW kurulabilen (ör. CECH-25xx) | Cobra'lı CFW | Yazıldı, test edilmedi | Yazıldı, test edilmedi |
+| Slim, CFW kurulabilen (ör. CECH-25xx) | Cobra'lı CFW | Çalışıyor (CECH-2504A'da denendi) | Yazıldı, test edilmedi |
 | Slim | HEN | HEN'de mümkün değil | Yazıldı, test edilmedi |
 | Super Slim (CECH-4xxx) | HEN | HEN'de mümkün değil | Yazıldı, test edilmedi |
 
@@ -59,12 +61,29 @@ dahili diskte ya da USB bellekte durabilir.
 ```
 /dev_hdd0/PS2ISO/                       (.BIN.ENC'ler /dev_usb000/PS2ISO/'da da olabilir)
 ├── God of War II.iso
+├── God of War II.iso.CONFIG                 ps2_netemu düzeltmeleri, otomatik eklenir
 ├── Burnout 3 [SLUS-21050].BIN.ENC
 ├── Burnout 3 [SLUS-21050].BIN.ENC.CONFIG    isteğe bağlı ps2_netemu ayarları
 └── covers/
     ├── SCUS-97481.png
     └── SLUS-21050.jpg
 ```
+
+### Oyun düzeltmeleri (CONFIG)
+
+`ps2_netemu` her oyunu kusursuz çalıştırmıyor: bazıları intro videosu atlanınca donuyor,
+siyah ekranda kalıyor ya da basınca duyarlı tuşlara ihtiyaç duyuyor. PS3 topluluğu yaklaşık
+1.400 oyun için bu sorunları düzelten küçük CONFIG dosyaları hazırladı; PS3SX2 bunları
+paketinde taşıyor. Bir `.iso` başlattığında oyunun seri koduna uyanı ISO'nun yanına
+`<oyun>.iso.CONFIG` olarak koyuyor, Cobra da onu emülatöre veriyor.
+
+- Senin oraya koyduğun bir CONFIG asla değiştirilmez.
+- Konsolda webMAN MOD'un CONFIG veritabanı kuruluysa bizde olmayan oyunlar için onunkiler kullanılır.
+- CONFIG'ler [webMAN MOD](https://github.com/aldostools/webMAN-MOD/tree/master/_Projects_/updater/PS2CONFIG)'dan
+  geliyor; ne değiştirdiklerini [psdevwiki](https://www.psdevwiki.com/ps3/PS2_Custom_Configs) anlatıyor.
+
+Örnek: Pro Evolution Soccer 6 düzeltme olmadan intro atlanınca donuyor, düzeltmeyle sorunsuz
+oynanıyor.
 
 ### Kapaklar
 
@@ -149,7 +168,7 @@ ki `make test` ile test edilebilsin.
 - [ ] USB bellekteki `.iso` oyunlarını takmak
 - [ ] XMB'ye dönmek yerine placeholder'ı doğrudan başlatmak
 - [ ] FAT32 USB'lerdeki parçalı `.iso.0` / `.iso.1` imajları
-- [ ] Hazır `ps2_netemu` CONFIG veritabanı
+- [x] Hazır `ps2_netemu` CONFIG veritabanı (topluluk CONFIG'leri)
 - [ ] Kapak yansımaları, analog çubuk, ayarlar ekranı
 - [ ] Daha fazla dil
 
@@ -182,5 +201,6 @@ eklenmemelidir. Sahip olduğun disklerdeki oyunları kullan.
   [webMAN MOD](https://github.com/aldostools/webMAN-MOD)'u
 - `source/cobra.c`'deki Cobra kodunun uyarlandığı, aldostools ve katkıcılarının
   [IRISMAN](https://github.com/aldostools/IRISMAN)'ı (GPL-3.0)
+- `pkgfiles/USRDIR/ps2config` içindeki `ps2_netemu` özel CONFIG'lerini yazan ve derleyen herkes
 - Bu projenin CI kurulumuna temel olan bucanero'nun
   [Apollo Save Tool](https://github.com/bucanero/apollo-ps3)'u

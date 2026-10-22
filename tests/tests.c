@@ -316,6 +316,18 @@ static void test_serial_from_filename(void)
     CHECK(serial_from_filename("ABCD-123456.iso", s) == -1);
 }
 
+static void test_serial_boot_name(void)
+{
+    char b[12];
+
+    CHECK(serial_boot_name("SLES-54203", b) == 0);
+    CHECK_STR(b, "SLES_542.03");
+    CHECK(serial_boot_name("slus20946", b) == 0);
+    CHECK_STR(b, "SLUS_209.46");
+    CHECK(serial_boot_name("", b) == -1);
+    CHECK(serial_boot_name("ICO", b) == -1);
+}
+
 static void test_serial_region(void)
 {
     CHECK_STR(serial_region("SLUS-20946"), "NTSC-U");
@@ -484,6 +496,71 @@ static void test_launch_ps2classic(void)
     CHECK(launch_ps2classic(&g, placeholder, NULL, NULL) == LAUNCH_ERR_COPY);
     CHECK(!exists(iso));
 
+}
+
+static void test_place_iso_config(void)
+{
+    static const unsigned char pes6[12] = { 0x3d, 0, 0, 0, 'W', 'D', 0, 0, 0x2a, 0, 0, 0 };
+    char root[600], bundled[700], webman[700], isodir[700], cfg[900], dst[GAME_PATH_MAX + 8];
+    const char *dirs[2];
+    game_t g;
+
+    path_join(root, sizeof(root), tmp_root, "cfg");
+    path_join(bundled, sizeof(bundled), root, "bundled");
+    path_join(webman, sizeof(webman), root, "webman");
+    path_join(isodir, sizeof(isodir), root, "PS2ISO");
+    mkdir(root, 0777);
+    mkdir(bundled, 0777);
+    mkdir(webman, 0777);
+    mkdir(isodir, 0777);
+    dirs[0] = bundled;
+    dirs[1] = webman;
+
+    path_join(cfg, sizeof(cfg), bundled, "SLES_542.03.CONFIG");
+    write_file(cfg, pes6, sizeof(pes6));
+    path_join(cfg, sizeof(cfg), webman, "SLES_542.03.CONFIG");
+    write_file(cfg, "webman", 6);
+    path_join(cfg, sizeof(cfg), webman, "SLUS_209.46.CONFIG");
+    write_file(cfg, "gta", 3);
+
+    memset(&g, 0, sizeof(g));
+    g.format = GAME_FMT_ISO;
+    path_join(g.path, sizeof(g.path), isodir, "PES 6.iso");
+    strcpy(g.serial, "SLES-54203");
+    snprintf(dst, sizeof(dst), "%s.CONFIG", g.path);
+
+    /* No folders configured: nothing happens. */
+    launcher_set_config_dirs(NULL, 0);
+    CHECK(launcher_place_iso_config(&g) == 0);
+    CHECK(!exists(dst));
+
+    /* First folder wins. */
+    launcher_set_config_dirs(dirs, 2);
+    CHECK(launcher_place_iso_config(&g) == 1);
+    CHECK(file_equals(dst, pes6, sizeof(pes6)));
+
+    /* A CONFIG the user put there is never replaced. */
+    write_file(dst, "mine", 4);
+    CHECK(launcher_place_iso_config(&g) == 1);
+    CHECK(file_equals(dst, "mine", 4));
+
+    /* Falls back to later folders. */
+    path_join(g.path, sizeof(g.path), isodir, "GTA.iso");
+    strcpy(g.serial, "SLUS-20946");
+    snprintf(dst, sizeof(dst), "%s.CONFIG", g.path);
+    CHECK(launcher_place_iso_config(&g) == 1);
+    CHECK(file_equals(dst, "gta", 3));
+
+    /* No match, or no serial: no file appears. */
+    path_join(g.path, sizeof(g.path), isodir, "Ico.iso");
+    snprintf(dst, sizeof(dst), "%s.CONFIG", g.path);
+    strcpy(g.serial, "SCUS-97113");
+    CHECK(launcher_place_iso_config(&g) == 0);
+    g.serial[0] = '\0';
+    CHECK(launcher_place_iso_config(&g) == 0);
+    CHECK(!exists(dst));
+
+    launcher_set_config_dirs(NULL, 0);
 }
 
 static int fake_cobra, fake_mount_result, fake_mount_calls;
@@ -755,10 +832,12 @@ int main(void)
     test_serial_from_system_cnf();
     test_serial_from_filename();
     test_serial_region();
+    test_serial_boot_name();
     test_title_from_filename();
     test_library_scan();
     test_launch_ps2classic();
     test_launch_ps2iso();
+    test_place_iso_config();
     test_text();
     test_utf8_decode();
     test_canvas();

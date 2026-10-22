@@ -17,6 +17,7 @@ tiny3d-src/
 *.BIN.ENC
 *.bin.enc
 *.CONFIG
+!pkgfiles/USRDIR/ps2config/*.CONFIG
 *.PUP
 PS2ISO/
 

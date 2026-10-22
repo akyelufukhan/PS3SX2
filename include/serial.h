@@ -23,6 +23,12 @@ int serial_from_filename(const char *name, char out[SERIAL_LEN + 1]);
  */
 int serial_match(const char *s, char out[SERIAL_LEN + 1]);
 
+/*
+ * The disc's boot file name for a serial, "SLES-54203" -> "SLES_542.03", which is
+ * how ps2_netemu CONFIG files are named. Returns 0 on success.
+ */
+int serial_boot_name(const char *serial, char out[12]);
+
 /* Video region guessed from the serial prefix: "NTSC-U", "PAL", "NTSC-J", "NTSC-K", "NTSC-C" or "". */
 const char *serial_region(const char *serial);
 
