@@ -39,6 +39,7 @@ typedef enum {
     STR_COVERS_DONE,        /* printf format, takes the number downloaded */
     STR_COVERS_MISSING,     /* printf format, takes the number not in the archive */
     STR_COVERS_NONE,
+    STR_COVERS_PROGRESS,    /* printf format, takes covers done and total */
     STR_ERR_NO_NETWORK,
     STR_ERR_COVERS_FAILED,
     STR_ERR_COVERS_FAILED_HINT,

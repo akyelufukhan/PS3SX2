@@ -10,6 +10,9 @@ void net_stop(void);
 /* Non-zero once the console has an IP address. */
 int net_connected(void);
 
+/* Makes running and future transfers fail fast while `on` is set; safe to call from any thread. */
+void net_cancel(int on);
+
 /* Same contract as coverdl_fetch_fn: 0 on success, 1 on HTTP 404, -1 on any other error. */
 int net_fetch(const char *url, const char *dst, void *user);
 

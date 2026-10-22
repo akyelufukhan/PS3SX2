@@ -31,7 +31,7 @@ The name reads "PS3 Slim × PS2": S for Slim, X for the ✕ button that starts a
 - English and Turkish UI, picked from the console's system language
 - On CFW with Cobra, mounts `.iso` games as a PS2 disc by itself: no webMAN MOD or other
   tools needed, just this one package
-- □ downloads missing covers by serial
+- Downloads missing covers by serial in the background, or on demand with □
 - Ships the community's `ps2_netemu` fixes for about 1,400 games and applies the right one
   automatically when an `.iso` starts
 - Loads `.BIN.ENC` games into the PS2 Classics Placeholder (HEN and CFW); you then start
@@ -95,10 +95,13 @@ PS3SX2 looks for a cover in this order:
 A game without a cover gets a generated one: a colored case with its title, region and
 serial. Images are shrunk to 256×360 on load.
 
-**Downloading covers:** press □ and PS3SX2 fetches the missing ones over the internet, by
-serial, from the [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers) archive that
-PCSX2 users rely on. They're saved as `covers/<SERIAL>.jpg` next to the games, so they show
-up offline from then on. Games the archive doesn't have keep their generated cover.
+**Downloading covers:** when the console is online, PS3SX2 fetches missing covers by itself
+in the background as soon as it starts, by serial, from the
+[xlenore/ps2-covers](https://github.com/xlenore/ps2-covers) archive that PCSX2 users rely on.
+You can keep browsing meanwhile: each cover appears as it arrives, and the header shows
+"Covers 3/5". They're saved as `covers/<SERIAL>.jpg` next to the games, so they show up
+offline from then on. Games the archive doesn't have keep their generated cover. □ runs the
+same download in the foreground, with a progress bar and a summary, e.g. to retry.
 
 - Box art is copyrighted, so neither this repository nor the package contains any; the
   console downloads it when you ask.
@@ -129,7 +132,7 @@ if you want covers by serial.
 | L1 / R1 | Jump 5 games |
 | ✕ | Start the selected game |
 | △ | Rescan the folders |
-| □ | Download missing covers |
+| □ | Download missing covers now (they also download on their own) |
 | ○ | Exit, or cancel a copy or download |
 
 ## Building
@@ -166,12 +169,12 @@ That produces `ps3sx2.pkg`. Every push to GitHub also builds it: open the
 | `source/cobra.c` | Cobra syscalls that mount a PS2 ISO (adapted from IRISMAN) |
 | `source/coverflow.c` | Carousel layout and animation math |
 | `source/canvas.c` | Small software painter for generated covers |
-| `source/coverdl.c`, `source/net.c` | Missing-cover downloads; HTTPS through curl and mbedTLS |
+| `source/coverdl.c`, `source/net.c`, `source/autocovers.c` | Missing-cover downloads, in the background or on demand; HTTPS through curl and mbedTLS |
 | `source/covers.c` | Where to look for each game's cover |
 | `source/lang.c`, `source/text.c` | English and Turkish strings, UTF-8 to font encoding |
-| `tests/` | Host unit tests for everything above except `main.c`, `gfx.c`, `cobra.c` and `net.c` |
+| `tests/` | Host unit tests for everything above except `main.c`, `gfx.c`, `cobra.c`, `net.c` and `autocovers.c` |
 
-Only `main.c`, `gfx.c`, `cobra.c` and `net.c` touch PS3 APIs. Keep new logic in a separate module
+Only `main.c`, `gfx.c`, `cobra.c`, `net.c` and `autocovers.c` touch PS3 APIs. Keep new logic in a separate module
 so it can be tested with `make test`.
 
 ## Roadmap

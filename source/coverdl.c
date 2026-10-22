@@ -103,7 +103,7 @@ static int serial_seen(const library_t *lib, const int *todo, int count, const c
 }
 
 void coverdl_run(const library_t *lib, const char *tmpl, coverdl_fetch_fn fetch,
-                 coverdl_progress_fn progress, void *user, coverdl_result *out)
+                 coverdl_progress_fn progress, coverdl_saved_fn saved, void *user, coverdl_result *out)
 {
     char url[GAME_PATH_MAX], target[GAME_PATH_MAX], dir[GAME_PATH_MAX], part[GAME_PATH_MAX + 8];
     int *todo, i, errors = 0;
@@ -145,6 +145,8 @@ void coverdl_run(const library_t *lib, const char *tmpl, coverdl_fetch_fn fetch,
         if (r == 0 && file_is_jpeg(part) && rename(part, target) == 0) {
             out->downloaded++;
             errors = 0;
+            if (saved)
+                saved(g, user);
             continue;
         }
         unlink(part);

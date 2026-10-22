@@ -702,6 +702,7 @@ static void test_lang(void)
         CHECK(strstr(lang_str(STR_GAME_COUNT), "%d") != NULL);
         CHECK(strstr(lang_str(STR_COVERS_DONE), "%d") != NULL);
         CHECK(strstr(lang_str(STR_COVERS_MISSING), "%d") != NULL);
+        CHECK(strstr(strstr(lang_str(STR_COVERS_PROGRESS), "%d") + 2, "%d") != NULL);
     }
     lang_set(LANG_TR);
     CHECK_STR(lang_str(STR_LAUNCH), "Başlat");
@@ -821,6 +822,15 @@ static int fake_fetch(const char *url, const char *dst, void *user)
 }
 
 static int cancel_at;
+static const game_t *last_saved;
+static int saved_calls;
+
+static void fake_saved(const game_t *g, void *user)
+{
+    (void)user;
+    last_saved = g;
+    saved_calls++;
+}
 
 static int fake_cover_progress(int done, int total, const game_t *g, void *user)
 {
@@ -883,7 +893,9 @@ static void test_coverdl(void)
 
     fake_fetch_calls = 0;
     cancel_at = 0;
-    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, fake_cover_progress, NULL, &r);
+    saved_calls = 0;
+    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, fake_cover_progress, fake_saved, NULL, &r);
+    CHECK(saved_calls == 1 && last_saved == &games[0]);  /* only real covers are reported */
     CHECK(r.total == 3);  /* PES once, Rare, Portal */
     CHECK(r.downloaded == 1 && r.missing == 1 && r.failed == 1 && !r.cancelled);
     CHECK(fake_fetch_calls == 3);
@@ -896,13 +908,13 @@ static void test_coverdl(void)
     CHECK(!coverdl_needs_cover(&games[1]));  /* the copy shares the downloaded cover */
 
     /* Nothing left that can be fetched except the two the archive lacks. */
-    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, NULL, NULL, &r);
+    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, NULL, NULL, NULL, &r);
     CHECK(r.total == 2 && r.downloaded == 0);
 
     /* Cancelling stops before the next game. */
     cancel_at = 1;
     fake_fetch_calls = 0;
-    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, fake_cover_progress, NULL, &r);
+    coverdl_run(&lib, COVERDL_DEFAULT_URL, fake_fetch, fake_cover_progress, fake_saved, NULL, &r);
     CHECK(r.cancelled && fake_fetch_calls == 1);
     cancel_at = 0;
 
@@ -912,13 +924,13 @@ static void test_coverdl(void)
         games[i].serial[9] = (char)('0' + i);
     }
     fake_fetch_calls = 0;
-    coverdl_run(&lib, "https://example.com/%s.jpg", fake_fetch, NULL, NULL, &r);
+    coverdl_run(&lib, "https://example.com/%s.jpg", fake_fetch, NULL, NULL, NULL, &r);
     CHECK(r.failed == 3 && fake_fetch_calls == 3);
 
     /* A broken template fails every game without touching the network. */
     strcpy(games[0].serial, "SLES-54204");
     fake_fetch_calls = 0;
-    coverdl_run(&lib, "https://example.com/cover.jpg", fake_fetch, NULL, NULL, &r);
+    coverdl_run(&lib, "https://example.com/cover.jpg", fake_fetch, NULL, NULL, NULL, &r);
     CHECK(fake_fetch_calls == 0 && r.downloaded == 0);
 }
 

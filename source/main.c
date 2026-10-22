@@ -8,6 +8,7 @@
 #include <sysmodule/sysmodule.h>
 #include <sysutil/sysutil.h>
 
+#include "autocovers.h"
 #include "cobra.h"
 #include "coverdl.h"
 #include "coverflow.h"
@@ -127,8 +128,26 @@ static void show_message(str_id title, str_id hint, int exit_on_close)
     show_message_text(lang_str(title), lang_str(hint), exit_on_close);
 }
 
+static void cover_url_template(char *out, size_t size);
+
+/* Fetches missing covers in the background when the console is online. */
+static void start_auto_covers(void)
+{
+    char tmpl[256];
+    int i;
+
+    for (i = 0; i < lib.count && !coverdl_needs_cover(&lib.games[i]); i++)
+        ;
+    if (i == lib.count || net_start(CA_BUNDLE) != 0)
+        return;
+    cover_url_template(tmpl, sizeof(tmpl));
+    autocovers_start(&lib, tmpl);
+}
+
 static void scan_library(void)
 {
+    /* The downloader reads the library that's about to be replaced. */
+    autocovers_stop();
     library_free(&lib);
     library_scan_default(&lib);
     library_sort(&lib);
@@ -136,6 +155,22 @@ static void scan_library(void)
     if (sel >= lib.count)
         sel = lib.count > 0 ? lib.count - 1 : 0;
     pos = (float)sel;
+    start_auto_covers();
+}
+
+/* Picks up covers the background download finished and shows its progress. */
+static void poll_auto_covers(void)
+{
+    char note[64] = "";
+    int g, done, total;
+
+    while ((g = autocovers_take_saved()) >= 0)
+        gfx_forget_cover(g);
+    if (autocovers_running()) {
+        autocovers_progress(&done, &total);
+        snprintf(note, sizeof(note), lang_str(STR_COVERS_PROGRESS), done, total);
+    }
+    gfx_set_note(note);
 }
 
 /* Draws one frame with a panel over the carousel, for work that blocks the main loop. */
@@ -234,6 +269,9 @@ static void download_covers(void)
     coverdl_result r;
     int i, needed = 0;
 
+    /* Take over from the background download, if one is running. */
+    autocovers_stop();
+
     for (i = 0; i < lib.count; i++)
         needed += coverdl_needs_cover(&lib.games[i]);
     if (!needed) {
@@ -248,7 +286,7 @@ static void download_covers(void)
     }
 
     cover_url_template(tmpl, sizeof(tmpl));
-    coverdl_run(&lib, tmpl, net_fetch, on_cover_progress, NULL, &r);
+    coverdl_run(&lib, tmpl, net_fetch, on_cover_progress, NULL, NULL, &r);
     gfx_reset_covers();
 
     if (r.cancelled) {
@@ -349,6 +387,7 @@ int main(int argc, const char *argv[])
         update_input();
         handle_input();
 
+        poll_auto_covers();
         if (lib.count > 0) {
             pos = coverflow_step(pos, (float)sel);
             gfx_update_covers(&lib, sel);
@@ -361,6 +400,7 @@ int main(int argc, const char *argv[])
         gfx_frame_end();
     }
 
+    autocovers_stop();
     library_free(&lib);
     net_stop();
     gfx_shutdown();

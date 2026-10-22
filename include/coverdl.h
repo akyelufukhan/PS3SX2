@@ -35,6 +35,9 @@ typedef int (*coverdl_fetch_fn)(const char *url, const char *dst, void *user);
 /* Called before each game; return non-zero to stop. */
 typedef int (*coverdl_progress_fn)(int done, int total, const game_t *g, void *user);
 
+/* Called once a cover has been saved for `g`. */
+typedef void (*coverdl_saved_fn)(const game_t *g, void *user);
+
 typedef struct {
     int total;       /* games that needed a cover */
     int downloaded;
@@ -48,6 +51,6 @@ typedef struct {
  * early after a few errors in a row, since that usually means no network.
  */
 void coverdl_run(const library_t *lib, const char *tmpl, coverdl_fetch_fn fetch,
-                 coverdl_progress_fn progress, void *user, coverdl_result *out);
+                 coverdl_progress_fn progress, coverdl_saved_fn saved, void *user, coverdl_result *out);
 
 #endif

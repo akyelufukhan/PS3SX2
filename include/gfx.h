@@ -14,6 +14,12 @@ void gfx_set_utc_offset(int minutes);
 /* Forgets every loaded cover; call after the library is rescanned. */
 void gfx_reset_covers(void);
 
+/* Forgets one game's cover so it's loaded again, e.g. after it was downloaded. */
+void gfx_forget_cover(int game);
+
+/* Short status shown in the header next to the game count, e.g. download progress; "" hides it. */
+void gfx_set_note(const char *note);
+
 /* Decodes at most one missing cover near `sel` per call, so scrolling never stalls. */
 void gfx_update_covers(const library_t *lib, int sel);
 

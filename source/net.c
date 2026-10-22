@@ -17,6 +17,7 @@
 
 static int started;
 static char ca_path[512];
+static volatile int cancel_requested;
 
 int net_start(const char *ca_bundle)
 {
@@ -54,6 +55,22 @@ int net_connected(void)
     return started && netCtlGetState(&state) == 0 && state == NET_CTL_STATE_IPObtained;
 }
 
+void net_cancel(int on)
+{
+    cancel_requested = on;
+}
+
+/* Aborts a transfer as soon as cancellation is requested. */
+static int on_transfer(void *user, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+{
+    (void)user;
+    (void)dltotal;
+    (void)dlnow;
+    (void)ultotal;
+    (void)ulnow;
+    return cancel_requested;
+}
+
 /* Uses the HTTP proxy set in the console's network settings, if any. */
 static void use_system_proxy(CURL *curl)
 {
@@ -81,7 +98,7 @@ int net_fetch(const char *url, const char *dst, void *user)
     FILE *fp;
 
     (void)user;
-    if (!started || !(fp = fopen(dst, "wb")))
+    if (!started || cancel_requested || !(fp = fopen(dst, "wb")))
         return -1;
     if (!(curl = curl_easy_init())) {
         fclose(fp);
@@ -99,6 +116,8 @@ int net_fetch(const char *url, const char *dst, void *user)
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
     curl_easy_setopt(curl, CURLOPT_MAXFILESIZE, 8L * 1024 * 1024);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);  /* curl's default writer is fwrite */
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, on_transfer);
     use_system_proxy(curl);
 
     res = curl_easy_perform(curl);

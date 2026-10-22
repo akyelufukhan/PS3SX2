@@ -87,6 +87,7 @@ static cover_slot slots[COVER_SLOTS];
 static short glyph_w[256];  /* advance of each baked character at FONT_CELL */
 static int font_ok, face_ok;
 static int utc_offset;
+static char header_note[64];
 static float anim_time;
 static FT_Library ft;
 static FT_Face face;
@@ -349,6 +350,11 @@ void gfx_set_utc_offset(int minutes)
     utc_offset = minutes;
 }
 
+void gfx_set_note(const char *note)
+{
+    snprintf(header_note, sizeof(header_note), "%s", note ? note : "");
+}
+
 /* ----------------------------------------------------------------- covers */
 
 void gfx_reset_covers(void)
@@ -358,6 +364,18 @@ void gfx_reset_covers(void)
     for (i = 0; i < COVER_SLOTS; i++) {
         slots[i].game = -1;
         slots[i].state = SLOT_FREE;
+    }
+}
+
+void gfx_forget_cover(int game)
+{
+    int i;
+
+    for (i = 0; i < COVER_SLOTS; i++) {
+        if (slots[i].state != SLOT_FREE && slots[i].game == game) {
+            slots[i].state = SLOT_FREE;
+            slots[i].game = -1;
+        }
     }
 }
 
@@ -894,7 +912,10 @@ static void draw_header(const library_t *lib)
     if (t)
         snprintf(clock, sizeof(clock), "%02d:%02d", t->tm_hour, t->tm_min);
     snprintf(right, sizeof(right), "%s   %s", count, clock);
-    text(SCREEN_W - 40 - text_width(right, 15), ROW_HEADER + 3, 15, C_DIM, right);
+    x = SCREEN_W - 40 - text_width(right, 15);
+    text(x, ROW_HEADER + 3, 15, C_DIM, right);
+    if (header_note[0])
+        text(x - 18 - text_width(header_note, 15), ROW_HEADER + 3, 15, C_ACCENT, header_note);
 }
 
 typedef struct {
