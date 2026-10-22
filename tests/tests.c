@@ -484,9 +484,61 @@ static void test_launch_ps2classic(void)
     CHECK(launch_ps2classic(&g, placeholder, NULL, NULL) == LAUNCH_ERR_COPY);
     CHECK(!exists(iso));
 
-    /* Plain ISOs need Cobra, which isn't wired up yet. */
+}
+
+static int fake_cobra, fake_mount_result, fake_mount_calls;
+static char fake_mounted[GAME_PATH_MAX];
+
+static int fake_can_mount(void)
+{
+    return fake_cobra;
+}
+
+static int fake_mount(const char *path)
+{
+    fake_mount_calls++;
+    snprintf(fake_mounted, sizeof(fake_mounted), "%s", path);
+    return fake_mount_result;
+}
+
+static void test_launch_ps2iso(void)
+{
+    static const launch_platform console = { fake_can_mount, fake_mount };
+    game_t g;
+
+    memset(&g, 0, sizeof(g));
     g.format = GAME_FMT_ISO;
-    CHECK(launcher_start(&g, NULL, NULL) == LAUNCH_ERR_NOT_IMPLEMENTED);
+    strcpy(g.path, "/dev_hdd0/PS2ISO/Ico.iso");
+
+    /* No Cobra layer at all (as on a PC), then HEN or OFW. */
+    launcher_set_platform(NULL);
+    CHECK(launcher_start(&g, NULL, NULL) == LAUNCH_ERR_NO_COBRA);
+    launcher_set_platform(&console);
+    fake_cobra = 0;
+    CHECK(launcher_start(&g, NULL, NULL) == LAUNCH_ERR_NO_COBRA);
+    CHECK(fake_mount_calls == 0);
+
+    /* Cobra: USB images are refused before anything is touched. */
+    fake_cobra = 1;
+    strcpy(g.path, "/dev_usb000/PS2ISO/Ico.iso");
+    CHECK(launcher_start(&g, NULL, NULL) == LAUNCH_ERR_ISO_NOT_ON_HDD);
+    CHECK(fake_mount_calls == 0);
+
+    strcpy(g.path, "/dev_hdd0/PS2ISO/Ico.iso");
+    CHECK(launcher_start(&g, NULL, NULL) == LAUNCH_OK_DISC);
+    CHECK(fake_mount_calls == 1);
+    CHECK_STR(fake_mounted, "/dev_hdd0/PS2ISO/Ico.iso");
+
+    fake_mount_result = -1;
+    CHECK(launcher_start(&g, NULL, NULL) == LAUNCH_ERR_MOUNT);
+
+    /* .BIN.ENC never goes through Cobra. */
+    g.format = GAME_FMT_CLASSIC;
+    fake_mount_calls = 0;
+    launcher_start(&g, NULL, NULL);
+    CHECK(fake_mount_calls == 0);
+
+    launcher_set_platform(NULL);
 }
 
 static size_t utf8_encode(unsigned cp, char *out)
@@ -706,6 +758,7 @@ int main(void)
     test_title_from_filename();
     test_library_scan();
     test_launch_ps2classic();
+    test_launch_ps2iso();
     test_text();
     test_utf8_decode();
     test_canvas();

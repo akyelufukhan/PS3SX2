@@ -7,6 +7,7 @@
 #include <sysmodule/sysmodule.h>
 #include <sysutil/sysutil.h>
 
+#include "cobra.h"
 #include "coverflow.h"
 #include "gfx.h"
 #include "lang.h"
@@ -147,14 +148,23 @@ static void launch_selected(void)
     case LAUNCH_OK:
         show_message(STR_READY_TITLE, STR_READY_HINT, 1);
         break;
+    case LAUNCH_OK_DISC:
+        show_message(STR_READY_DISC_TITLE, STR_READY_DISC_HINT, 1);
+        break;
     case LAUNCH_ERR_NO_PLACEHOLDER:
         show_message(STR_ERR_NO_PLACEHOLDER, STR_ERR_NO_PLACEHOLDER_HINT, 0);
         break;
     case LAUNCH_ERR_CANCELLED:
         show_message(STR_ERR_CANCELLED, STR_COUNT, 0);
         break;
-    case LAUNCH_ERR_NOT_IMPLEMENTED:
-        show_message(STR_ERR_ISO_TITLE, STR_ERR_ISO_HINT, 0);
+    case LAUNCH_ERR_NO_COBRA:
+        show_message(STR_ERR_NO_COBRA, STR_ERR_NO_COBRA_HINT, 0);
+        break;
+    case LAUNCH_ERR_ISO_NOT_ON_HDD:
+        show_message(STR_ERR_ISO_NOT_ON_HDD, STR_ERR_ISO_NOT_ON_HDD_HINT, 0);
+        break;
+    case LAUNCH_ERR_MOUNT:
+        show_message(STR_ERR_MOUNT, STR_COUNT, 0);
         break;
     case LAUNCH_ERR_COPY:
     default:
@@ -162,6 +172,18 @@ static void launch_selected(void)
         break;
     }
 }
+
+/* Asked on the first .iso launch only, so unusual setups never pay for it at startup. */
+static int can_mount_iso(void)
+{
+    static int cobra = -1;
+
+    if (cobra < 0)
+        cobra = cobra_detect() == PAYLOAD_COBRA;
+    return cobra;
+}
+
+static const launch_platform console = { can_mount_iso, cobra_mount_ps2_iso };
 
 static void handle_input(void)
 {
@@ -217,6 +239,7 @@ int main(int argc, const char *argv[])
     sysUtilGetSystemParamInt(SYSUTIL_SYSTEMPARAM_ID_SUMMERTIME, &summer_time);
     gfx_set_utc_offset(tz_minutes + (summer_time ? 60 : 0));
 
+    launcher_set_platform(&console);
     library_init(&lib);
     scan_library();
 

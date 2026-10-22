@@ -29,16 +29,18 @@ PS2'den geliyor.
 - Seçili kapağın altında oyunun adı, seri kodu, bölgesi, boyutu ve formatı
 - PNG veya JPG kapaklar, boyut sınırı yok
 - Türkçe ve İngilizce arayüz, konsolun sistem diline göre otomatik seçilir
+- Cobra'lı CFW'de `.iso` oyunlarını kendisi PS2 diski olarak takar: webMAN MOD ya da
+  başka bir araç gerekmez, tek paket yeterli
 - `.BIN.ENC` oyunları PS2 Classics Placeholder'a yükler (HEN ve CFW'de), sonra
   placeholder'ı XMB'den başlatırsın
 
 ## Uyumluluk
 
-| Konsol | Yazılım | `.BIN.ENC` (PS2 Classic) | `.iso` |
+| Konsol | Yazılım | `.iso` | `.BIN.ENC` (PS2 Classic) |
 |---|---|---|---|
-| Super Slim (CECH-4xxx) | HEN | Yazıldı, test edilmedi | HEN'de mümkün değil |
-| Slim | HEN | Yazıldı, test edilmedi | HEN'de mümkün değil |
-| Slim, CFW kurulabilen | Cobra'lı CFW | Yazıldı, test edilmedi | Planlandı |
+| Slim, CFW kurulabilen (ör. CECH-25xx) | Cobra'lı CFW | Yazıldı, test edilmedi | Yazıldı, test edilmedi |
+| Slim | HEN | HEN'de mümkün değil | Yazıldı, test edilmedi |
+| Super Slim (CECH-4xxx) | HEN | HEN'de mümkün değil | Yazıldı, test edilmedi |
 
 HEN, PS2 ISO bağlayamıyor. Bu yüzden HEN'de her oyunun `.BIN.ENC` olması gerekiyor.
 İki başlatma yolunun ayrıntıları [docs/launching.md](docs/launching.md) dosyasında
@@ -46,13 +48,16 @@ HEN, PS2 ISO bağlayamıyor. Bu yüzden HEN'de her oyunun `.BIN.ENC` olması ger
 
 ## Konsolda gerekenler
 
-1. **HEN veya CFW**
-2. `.BIN.ENC` oyunlar için yüklü bir **PS2 Classics Placeholder** (`/dev_hdd0/game/PS2U10000`)
-3. `PS2ISO` klasöründe oyunların: `.BIN.ENC` (sahip olduğun disklerden, PS2 Classics GUI
-   gibi bir PC aracıyla hazırlanmış) ya da `.iso`
+**Cobra'lı CFW:** yalnızca PS3SX2. Cobra CFW'nin, `ps2_netemu` da sistem yazılımının
+içinde geliyor. `.iso` oyunlarını `/dev_hdd0/PS2ISO` klasörüne koy; Cobra PS2 imajlarını
+yalnızca dahili diskten takabiliyor.
+
+**HEN:** **PS2 Classics Placeholder** (`/dev_hdd0/game/PS2U10000`) ve sahip olduğun
+disklerden PS2 Classics GUI gibi bir PC aracıyla hazırlanmış `.BIN.ENC` oyunlar. Bunlar
+dahili diskte ya da USB bellekte durabilir.
 
 ```
-/dev_hdd0/PS2ISO/                       (USB bellekte /dev_usb000/PS2ISO/)
+/dev_hdd0/PS2ISO/                       (.BIN.ENC'ler /dev_usb000/PS2ISO/'da da olabilir)
 ├── God of War II.iso
 ├── Burnout 3 [SLUS-21050].BIN.ENC
 ├── Burnout 3 [SLUS-21050].BIN.ENC.CONFIG    isteğe bağlı ps2_netemu ayarları
@@ -125,21 +130,23 @@ sekmesinden bir çalıştırmayı açıp `ps3sx2-…` çıktısını indirebilir
 | `source/library.c` | Klasör tarama, dosya adından başlık |
 | `source/iso9660.c` | Normal ve ham disk imajlarından `SYSTEM.CNF` okuma |
 | `source/serial.c` | `SYSTEM.CNF` ve dosya adında seri kod bulma, bölge tespiti |
-| `source/launcher.c` | PS2 Classics kopyalama, Cobra ISO taslağı |
+| `source/launcher.c` | PS2 Classics kopyalama ve ISO takma kuralları |
+| `source/cobra.c` | PS2 ISO takan Cobra sistem çağrıları (IRISMAN'dan uyarlandı) |
 | `source/coverflow.c` | Kapak rafı yerleşimi ve animasyon hesapları |
 | `source/canvas.c` | Üretilen kapaklar için küçük yazılımsal çizim modülü |
 | `source/covers.c` | Her oyunun kapağının aranacağı yerler |
 | `source/lang.c`, `source/text.c` | Türkçe ve İngilizce metinler, UTF-8'den font kodlamasına çeviri |
-| `tests/` | `main.c` ve `gfx.c` dışındaki her şey için birim testleri |
+| `tests/` | `main.c`, `gfx.c` ve `cobra.c` dışındaki her şey için birim testleri |
 
-PS3 API'lerine yalnızca `main.c` ve `gfx.c` dokunur. Yeni mantığı ayrı bir modüle koy
+PS3 API'lerine yalnızca `main.c`, `gfx.c` ve `cobra.c` dokunur. Yeni mantığı ayrı bir modüle koy
 ki `make test` ile test edilebilsin.
 
 ## Yol haritası
 
 - [x] RPCS3'te çalıştırıp kapak rafını tasarıma göre ayarlamak
 - [ ] Gerçek konsolda çalıştırıp bir oyunu baştan sona başlatmak
-- [ ] CFW'de düz `.iso` oyunları Cobra ile başlatmak
+- [x] CFW'de düz `.iso` oyunları Cobra ile başlatmak (konsolda test edilmeli)
+- [ ] USB bellekteki `.iso` oyunlarını takmak
 - [ ] XMB'ye dönmek yerine placeholder'ı doğrudan başlatmak
 - [ ] FAT32 USB'lerdeki parçalı `.iso.0` / `.iso.1` imajları
 - [ ] Hazır `ps2_netemu` CONFIG veritabanı
@@ -173,5 +180,7 @@ eklenmemelidir. Sahip olduğun disklerdeki oyunları kullan.
 - Çizim ve fontlar için Hermes'in [Tiny3D](https://github.com/wargio/tiny3D)'si
 - PS2 oyunlarının nasıl bağlandığını kaynak koduyla belgeleyen aldostools'un
   [webMAN MOD](https://github.com/aldostools/webMAN-MOD)'u
+- `source/cobra.c`'deki Cobra kodunun uyarlandığı, aldostools ve katkıcılarının
+  [IRISMAN](https://github.com/aldostools/IRISMAN)'ı (GPL-3.0)
 - Bu projenin CI kurulumuna temel olan bucanero'nun
   [Apollo Save Tool](https://github.com/bucanero/apollo-ps3)'u

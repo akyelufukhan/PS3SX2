@@ -9,6 +9,13 @@
 
 #define COPY_CHUNK (1024 * 1024)
 
+static const launch_platform *platform;
+
+void launcher_set_platform(const launch_platform *p)
+{
+    platform = p;
+}
+
 static int is_dir(const char *path)
 {
     struct stat st;
@@ -114,8 +121,20 @@ launch_result launch_ps2classic(const game_t *g, const char *placeholder_dir,
 
 launch_result launch_ps2iso(const game_t *g)
 {
-    (void)g;
-    return LAUNCH_ERR_NOT_IMPLEMENTED;
+    if (!platform || !platform->can_mount_iso || !platform->can_mount_iso())
+        return LAUNCH_ERR_NO_COBRA;
+
+    /* Cobra only reads PS2 images straight off the internal drive; IRISMAN and
+       webMAN MOD have the same limit for USB drives. */
+    if (strncmp(g->path, "/dev_hdd0/", 10) != 0)
+        return LAUNCH_ERR_ISO_NOT_ON_HDD;
+
+    /* Flags Cobra 8.x leaves behind that would make the firmware treat the next
+       disc as a PS2 Classic or as a real optical disc. */
+    unlink("/dev_hdd0/classic_ps2");
+    unlink("/dev_hdd0/tmp/loadoptical");
+
+    return platform->mount_ps2_iso(g->path) == 0 ? LAUNCH_OK_DISC : LAUNCH_ERR_MOUNT;
 }
 
 launch_result launcher_start(const game_t *g, launch_progress_cb cb, void *user)
