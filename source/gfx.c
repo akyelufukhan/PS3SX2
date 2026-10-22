@@ -88,6 +88,7 @@ static short glyph_w[256];  /* advance of each baked character at FONT_CELL */
 static int font_ok, face_ok;
 static int utc_offset;
 static char header_note[64];
+static int on_hen;
 static float anim_time;
 static FT_Library ft;
 static FT_Face face;
@@ -348,6 +349,11 @@ void gfx_shutdown(void)
 void gfx_set_utc_offset(int minutes)
 {
     utc_offset = minutes;
+}
+
+void gfx_set_hen(int on)
+{
+    on_hen = on;
 }
 
 void gfx_set_note(const char *note)
@@ -959,7 +965,10 @@ static void draw_details(const library_t *lib, int sel)
     if (region[0])
         chips[n++] = (chip){ region, 0x1c3a33ff, 0x9fe1cbff };
     chips[n++] = (chip){ size, 0x2a2a35ff, 0xc9cbd6ff };
-    chips[n++] = (chip){ g->format == GAME_FMT_ISO ? "ISO" : "PS2 Classic", 0x2d2550ff, 0xc8b8ffff };
+    if (g->format == GAME_FMT_ISO && on_hen)
+        chips[n++] = (chip){ lang_str(STR_ISO_HEN), 0x4a3510ff, 0xffc46bff };  /* amber warning */
+    else
+        chips[n++] = (chip){ g->format == GAME_FMT_ISO ? "ISO" : "PS2 Classic", 0x2d2550ff, 0xc8b8ffff };
     draw_chips(chips, n, ROW_CHIPS);
 
     snprintf(line, sizeof(line), "%d / %d  ·  %s", sel + 1, lib->count, name ? name + 1 : g->path);

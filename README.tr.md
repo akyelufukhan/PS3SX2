@@ -16,9 +16,9 @@ rafı olarak listeler. Birini seçtiğinde oyunu bu emülatöre teslim eder.
 İsim "PS3 Slim × PS2" diye okunur: S Slim'den, X oyunu başlatan ✕ tuşundan, 2 de
 PS2'den geliyor.
 
-> **Durum: erken geliştirme aşamasında.** Arayüz RPCS3 emülatöründe çalışıyor, ama gerçek
-> bir konsolda henüz hiçbir şey denenmedi; bir oyunu sonuna kadar başlatmak da buna dahil.
-> Pürüzler olabilir, bulduklarını bildirirsen sevinirim.
+> **Durum: gerçek konsolda çalışıyor.** CFW'li bir CECH-2504A'da `.iso` oyunları Cobra ile
+> açılıyor; CONFIG düzeltmeleri ve kapak indirme de çalışıyor. HEN yolu (`.BIN.ENC` ve PS2
+> Classics Placeholder) henüz bir konsolda denenmedi; deneyenlerin bildirimlerini bekliyoruz.
 
 ## Özellikler
 
@@ -42,10 +42,11 @@ PS2'den geliyor.
 | Konsol | Yazılım | `.iso` | `.BIN.ENC` (PS2 Classic) |
 |---|---|---|---|
 | Slim, CFW kurulabilen (ör. CECH-25xx) | Cobra'lı CFW | Çalışıyor (CECH-2504A'da denendi) | Yazıldı, test edilmedi |
-| Slim | HEN | HEN'de mümkün değil | Yazıldı, test edilmedi |
-| Super Slim (CECH-4xxx) | HEN | HEN'de mümkün değil | Yazıldı, test edilmedi |
+| Slim | HEN | HEN'de mümkün değil (listede işaretli) | Yazıldı, test edilmedi |
+| Super Slim (CECH-4xxx) | HEN | HEN'de mümkün değil (listede işaretli) | Yazıldı, test edilmedi |
 
-HEN, PS2 ISO bağlayamıyor. Bu yüzden HEN'de her oyunun `.BIN.ENC` olması gerekiyor.
+HEN, PS2 ISO bağlayamıyor. Bu yüzden HEN'de her oyunun `.BIN.ENC` olması gerekiyor; bkz.
+[HEN ve PS2 Classics Placeholder](#hen-ve-ps2-classics-placeholder).
 İki başlatma yolunun ayrıntıları [docs/launching.md](docs/launching.md) dosyasında
 (İngilizce).
 
@@ -55,9 +56,8 @@ HEN, PS2 ISO bağlayamıyor. Bu yüzden HEN'de her oyunun `.BIN.ENC` olması ger
 içinde geliyor. `.iso` oyunlarını `/dev_hdd0/PS2ISO` klasörüne koy; Cobra PS2 imajlarını
 yalnızca dahili diskten takabiliyor.
 
-**HEN:** **PS2 Classics Placeholder** (`/dev_hdd0/game/PS2U10000`) ve sahip olduğun
-disklerden PS2 Classics GUI gibi bir PC aracıyla hazırlanmış `.BIN.ENC` oyunlar. Bunlar
-dahili diskte ya da USB bellekte durabilir.
+**HEN:** ayrıca kurulan **PS2 Classics Placeholder** ve `.BIN.ENC` biçimindeki oyunların.
+Bunlar dahili diskte ya da USB bellekte durabilir. İkisi de bir sonraki bölümde anlatılıyor.
 
 ```
 /dev_hdd0/PS2ISO/                       (.BIN.ENC'ler /dev_usb000/PS2ISO/'da da olabilir)
@@ -69,6 +69,24 @@ dahili diskte ya da USB bellekte durabilir.
     ├── SCUS-97481.png
     └── SLUS-21050.jpg
 ```
+
+### HEN ve PS2 Classics Placeholder
+
+HEN PS2 disk imajlarını takamadığı için PS3SX2 HEN'de oyunları Sony'nin PlayStation Store'daki
+PS2 Classics sürümleri gibi çalıştırır:
+
+- **PS2 Classics Placeholder**, Sony'nin PS2 Classics uygulamasıdır; `PS2U10000` kimliğiyle
+  `/dev_hdd0/game/PS2U10000` klasörüne kurulur. Klasöründe `USRDIR/ISO.BIN.ENC` olarak duran
+  şifreli imajı oynatır. Bir `.BIN.ENC` oyunda ✕'e basınca PS3SX2 oyunu (varsa `.CONFIG`
+  dosyasıyla birlikte) oraya kopyalar; sonra placeholder'ı XMB'den başlatırsın.
+- **`.BIN.ENC`**, bu uygulama için şifrelenmiş bir PS2 disk imajıdır. Sahip olduğun bir
+  diskten, PS2 Classics GUI gibi bir PC aracıyla hazırlanır.
+- **PS3SX2 placeholder'ı neden içermiyor:** bir PS3 paketi yalnızca tek bir oyun klasörüne
+  kurulur, yani ikinci bir uygulama taşıyamaz. Ayrıca placeholder Sony'nin imzalı
+  dosyalarından ve lisans verisinden oluşur; açık kaynak bir proje bunları dağıtamaz. Onu
+  HEN rehberinin anlattığı şekilde kur; eksikse PS3SX2 sana söyler.
+- HEN'de `.iso` oyunlarında turuncu bir **"ISO · HEN'de açılmaz"** etiketi görünür; böylece
+  ✕'e basmadan önce bilirsin.
 
 ### Oyun düzeltmeleri (CONFIG)
 

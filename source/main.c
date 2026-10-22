@@ -58,6 +58,7 @@ static library_t lib;
 static int sel;
 static float pos;
 static message msg;
+static payload_kind payload;  /* HEN, Cobra CFW or neither; detected once at startup */
 
 static void on_sysutil(u64 status, u64 param, void *user)
 {
@@ -218,7 +219,10 @@ static void launch_selected(void)
         show_message(STR_ERR_CANCELLED, STR_COUNT, 0);
         break;
     case LAUNCH_ERR_NO_COBRA:
-        show_message(STR_ERR_NO_COBRA, STR_ERR_NO_COBRA_HINT, 0);
+        if (payload == PAYLOAD_HEN)
+            show_message(STR_ERR_ISO_ON_HEN, STR_ERR_ISO_ON_HEN_HINT, 0);
+        else
+            show_message(STR_ERR_NO_COBRA, STR_ERR_NO_COBRA_HINT, 0);
         break;
     case LAUNCH_ERR_ISO_NOT_ON_HDD:
         show_message(STR_ERR_ISO_NOT_ON_HDD, STR_ERR_ISO_NOT_ON_HDD_HINT, 0);
@@ -302,14 +306,9 @@ static void download_covers(void)
     }
 }
 
-/* Asked on the first .iso launch only, so unusual setups never pay for it at startup. */
 static int can_mount_iso(void)
 {
-    static int cobra = -1;
-
-    if (cobra < 0)
-        cobra = cobra_detect() == PAYLOAD_COBRA;
-    return cobra;
+    return payload == PAYLOAD_COBRA;
 }
 
 static const launch_platform console = { can_mount_iso, cobra_mount_ps2_iso };
@@ -377,6 +376,9 @@ int main(int argc, const char *argv[])
     sysUtilGetSystemParamInt(SYSUTIL_SYSTEMPARAM_ID_SUMMERTIME, &summer_time);
     gfx_set_utc_offset(tz_minutes + (summer_time ? 60 : 0));
 
+    /* Two lv2 calls; knowing it up front lets the list flag .iso games HEN can't start. */
+    payload = cobra_detect();
+    gfx_set_hen(payload == PAYLOAD_HEN);
     launcher_set_platform(&console);
     launcher_set_config_dirs(config_dirs, sizeof(config_dirs) / sizeof(config_dirs[0]));
     library_init(&lib);

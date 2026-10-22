@@ -16,9 +16,9 @@ covers. Pick one and it hands the game to that emulator.
 The name reads "PS3 Slim × PS2": S for Slim, X for the ✕ button that starts a game,
 2 for PS2.
 
-> **Status: early development.** The UI runs in the RPCS3 emulator, but nothing has been
-> tried on a real console yet, including actually starting a game. Expect rough edges and
-> please report what you find.
+> **Status: works on a real console.** On a CECH-2504A with CFW, `.iso` games start through
+> Cobra, and CONFIG fixes and cover downloads work. The HEN route (`.BIN.ENC` through the PS2
+> Classics Placeholder) hasn't been tried on a console yet; reports are welcome.
 
 ## Features
 
@@ -42,10 +42,11 @@ The name reads "PS3 Slim × PS2": S for Slim, X for the ✕ button that starts a
 | Console | Firmware | `.iso` | `.BIN.ENC` (PS2 Classic) |
 |---|---|---|---|
 | Slim, CFW-capable (e.g. CECH-25xx) | CFW with Cobra | Works (tested on a CECH-2504A) | Written, untested |
-| Slim | HEN | Not possible on HEN | Written, untested |
-| Super Slim (CECH-4xxx) | HEN | Not possible on HEN | Written, untested |
+| Slim | HEN | Not possible on HEN (tagged in the list) | Written, untested |
+| Super Slim (CECH-4xxx) | HEN | Not possible on HEN (tagged in the list) | Written, untested |
 
-HEN can't mount PS2 ISOs, so on HEN every game has to be a `.BIN.ENC`.
+HEN can't mount PS2 ISOs, so on HEN every game has to be a `.BIN.ENC`; see
+[HEN and the PS2 Classics Placeholder](#hen-and-the-ps2-classics-placeholder).
 [docs/launching.md](docs/launching.md) explains both routes in detail.
 
 ## What you need on the console
@@ -54,9 +55,8 @@ HEN can't mount PS2 ISOs, so on HEN every game has to be a `.BIN.ENC`.
 firmware. Put `.iso` games in `/dev_hdd0/PS2ISO`; Cobra mounts PS2 images from the
 internal drive only.
 
-**HEN:** the **PS2 Classics Placeholder** (`/dev_hdd0/game/PS2U10000`) and your games as
-`.BIN.ENC`, made from discs you own with a PC tool such as PS2 Classics GUI. These can
-sit on the internal drive or a USB drive.
+**HEN:** the **PS2 Classics Placeholder**, installed separately, and your games as `.BIN.ENC`.
+These can sit on the internal drive or a USB drive. The next section explains both.
 
 ```
 /dev_hdd0/PS2ISO/                       (.BIN.ENC can also go in /dev_usb000/PS2ISO/)
@@ -68,6 +68,24 @@ sit on the internal drive or a USB drive.
     ├── SCUS-97481.png
     └── SLUS-21050.jpg
 ```
+
+### HEN and the PS2 Classics Placeholder
+
+HEN can't mount PS2 disc images, so on HEN PS3SX2 plays games the way Sony's PS2 Classics
+store releases work:
+
+- **PS2 Classics Placeholder** is Sony's PS2 Classics app, installed as title `PS2U10000`
+  in `/dev_hdd0/game/PS2U10000`. It plays whatever encrypted image sits in its folder as
+  `USRDIR/ISO.BIN.ENC`. When you press ✕ on a `.BIN.ENC` game, PS3SX2 copies it there (with
+  its `.CONFIG`, if it has one); you then start the placeholder from the XMB.
+- **`.BIN.ENC`** is a PS2 disc image encrypted for that app. Make it from a disc you own with
+  a PC tool such as PS2 Classics GUI.
+- **Why PS3SX2 doesn't include the placeholder:** a PS3 package installs into a single game
+  folder, so it can't carry a second app, and the placeholder is made of Sony's signed files
+  and license data, which an open-source project can't redistribute. Install it the way your
+  HEN guide describes; PS3SX2 tells you when it's missing.
+- On HEN, `.iso` games carry an amber **"ISO · not playable on HEN"** tag, so you know before
+  pressing ✕.
 
 ### Game fixes (CONFIG)
 
