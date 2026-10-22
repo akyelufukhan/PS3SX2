@@ -907,8 +907,10 @@ static void test_coverdl(void)
     cancel_at = 0;
 
     /* No network: gives up after three errors in a row. */
-    for (i = 0; i < 6; i++)
-        snprintf(games[i].serial, sizeof(games[i].serial), "DOWN-%05d", i);
+    for (i = 0; i < 6; i++) {
+        strcpy(games[i].serial, "DOWN-00000");
+        games[i].serial[9] = (char)('0' + i);
+    }
     fake_fetch_calls = 0;
     coverdl_run(&lib, "https://example.com/%s.jpg", fake_fetch, NULL, NULL, &r);
     CHECK(r.failed == 3 && fake_fetch_calls == 3);
