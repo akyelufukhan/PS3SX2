@@ -7,16 +7,19 @@ jobs:
     name: Host unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build and run tests
         run: make test
 
   pkg:
     name: PS3 package
+    needs: tests
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write   # to publish releases from v* tags
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set env vars
         run: |
@@ -61,8 +64,24 @@ jobs:
         run: make pkg
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ps3sx2-${{ env.sha_name }}
           path: ps3sx2.pkg
           if-no-files-found: error
+
+      # Pushing a tag like v1.0.0 publishes a release with the package, notes from docs/releases/.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="docs/releases/${TAG}.md"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" ps3sx2.pkg --clobber
+          elif [ -f "$NOTES" ]; then
+            gh release create "$TAG" ps3sx2.pkg --verify-tag --title "PS3SX2 $TAG" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" ps3sx2.pkg --verify-tag --title "PS3SX2 $TAG" --generate-notes
+          fi

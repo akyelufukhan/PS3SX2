@@ -49,6 +49,18 @@ HEN can't mount PS2 ISOs, so on HEN every game has to be a `.BIN.ENC`; see
 [HEN and the PS2 Classics Placeholder](#hen-and-the-ps2-classics-placeholder).
 [docs/launching.md](docs/launching.md) explains both routes in detail.
 
+## Install
+
+1. Download `ps3sx2.pkg` from the
+   [latest release](https://github.com/akyelufukhan/PS3SX2/releases/latest).
+2. Copy it to the root of a USB drive formatted as **FAT32** (the PS3 can't read exFAT or NTFS).
+3. On the console, enable HEN first if you use HEN. Then go to
+   **Game → Package Manager → Install Package Files → Standard** and pick `ps3sx2.pkg`.
+4. Start **PS3SX2** from the Game column.
+
+To update, install a newer `ps3sx2.pkg` over the old one; your games, covers and settings
+stay where they are.
+
 ## What you need on the console
 
 **CFW with Cobra:** only PS3SX2. Cobra comes with the CFW and `ps2_netemu` with the
@@ -171,8 +183,9 @@ export PSL1GHT=$PS3DEV
 make pkg
 ```
 
-That produces `ps3sx2.pkg`. Every push to GitHub also builds it: open the
-**Actions** tab, pick a run and download the `ps3sx2-…` artifact.
+That produces `ps3sx2.pkg`. Every push to GitHub also builds it (open the **Actions** tab,
+pick a run and download the `ps3sx2-…` artifact), and pushing a `v*` tag publishes a release
+with the package attached, using `docs/releases/<tag>.md` as its notes.
 
 ### Source layout
 

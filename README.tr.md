@@ -50,6 +50,18 @@ HEN, PS2 ISO bağlayamıyor. Bu yüzden HEN'de her oyunun `.BIN.ENC` olması ger
 İki başlatma yolunun ayrıntıları [docs/launching.md](docs/launching.md) dosyasında
 (İngilizce).
 
+## Kurulum
+
+1. `ps3sx2.pkg` dosyasını [son sürümden](https://github.com/akyelufukhan/PS3SX2/releases/latest)
+   indir.
+2. **FAT32** biçimli bir USB belleğin kök dizinine kopyala (PS3 exFAT ve NTFS okumaz).
+3. Konsolda HEN kullanıyorsan önce HEN'i etkinleştir. Sonra
+   **Oyun → Package Manager → Install Package Files → Standard** yolundan `ps3sx2.pkg`'yi seç.
+4. Oyun sütunundan **PS3SX2**'yi başlat.
+
+Güncellemek için yeni `ps3sx2.pkg`'yi eskisinin üstüne kur; oyunların, kapakların ve
+ayarların yerinde kalır.
+
 ## Konsolda gerekenler
 
 **Cobra'lı CFW:** yalnızca PS3SX2. Cobra CFW'nin, `ps2_netemu` da sistem yazılımının
@@ -172,8 +184,10 @@ export PSL1GHT=$PS3DEV
 make pkg
 ```
 
-Sonuç `ps3sx2.pkg` dosyasıdır. GitHub'a yapılan her push'ta da derlenir: **Actions**
-sekmesinden bir çalıştırmayı açıp `ps3sx2-…` çıktısını indirebilirsin.
+Sonuç `ps3sx2.pkg` dosyasıdır. GitHub'a yapılan her push'ta da derlenir (**Actions**
+sekmesinden bir çalıştırmayı açıp `ps3sx2-…` çıktısını indirebilirsin); `v*` biçiminde bir
+etiket push edilince de paket eklenmiş bir sürüm (release) yayımlanır, notları
+`docs/releases/<etiket>.md` dosyasından alınır.
 
 ### Kaynak düzeni
 
